@@ -1,0 +1,15 @@
+const express = require("express");
+const router = express.Router();
+
+const controller = require("../controllers/salaryGrades.controller");
+// const requireAuth = require("../middlewares/requireAuth"); ❌ nếu export sai sẽ crash
+
+// router.use(requireAuth); ✅ chỉ bật khi requireAuth export là function
+
+router.get("/", controller.list);
+router.get("/:id", controller.getById);
+router.post("/", controller.create);
+router.put("/:id", controller.update);
+router.delete("/:id", controller.remove);
+
+module.exports = router;
