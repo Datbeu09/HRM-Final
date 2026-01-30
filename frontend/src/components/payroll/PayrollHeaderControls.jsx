@@ -5,6 +5,10 @@ export default function PayrollHeaderControls({
   setMonth,
   department,
   setDepartment,
+
+  // ✅ danh sách từ API /departments
+  departments = [],
+
   onReload,
   loading,
   submitting,
@@ -25,16 +29,26 @@ export default function PayrollHeaderControls({
           />
         </label>
 
+        {/* ✅ Department select */}
         <label className="flex items-center gap-2 px-4 h-11 rounded-xl border border-border bg-white text-sm font-semibold text-slate-700">
           <span className="material-symbols-outlined text-[18px] text-slate-500">
             apartment
           </span>
-          <input
+
+          <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            placeholder="Phòng ban (vd: Marketing)"
-            className="bg-transparent outline-none text-sm w-[180px]"
-          />
+            disabled={loading || submitting}
+            className="bg-transparent outline-none text-sm w-[220px] disabled:opacity-60"
+          >
+            <option value="">Tất cả phòng ban</option>
+
+            {departments.map((d) => (
+              <option key={d.id ?? d.name} value={d.name}>
+                {d.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <button
@@ -47,7 +61,9 @@ export default function PayrollHeaderControls({
         </button>
       </div>
 
-      {error ? <div className="text-sm text-red-600 font-semibold">{error}</div> : null}
+      {error ? (
+        <div className="text-sm text-red-600 font-semibold">{error}</div>
+      ) : null}
     </section>
   );
 }

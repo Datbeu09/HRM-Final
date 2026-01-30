@@ -5,6 +5,8 @@ import {
   approvePayroll,
   requestPayrollEdit,
 } from "../../api/payrollApproval.api";
+import { getDepartments } from "../../api/departments.api";
+
 import PayrollAutoCheckBar from "../../components/payroll/PayrollAutoCheckBar";
 import PayrollEmployeeTable from "../../components/payroll/PayrollEmployeeTable";
 import PayrollToolbar from "../../components/payroll/PayrollToolbar";
@@ -14,8 +16,14 @@ import PayrollHeaderControls from "../../components/payroll/PayrollHeaderControl
 import { normalizeResponse } from "../../components/payroll/payrollUtils";
 
 export default function FinanceApprovalPage() {
-  const [month, setMonth] = useState("2026-05");
-  const [department, setDepartment] = useState("Marketing");
+  const [month, setMonth] = useState("2026-01");
+
+  // ✅ phòng ban lấy từ API /departments
+  const [departments, setDepartments] = useState([]);
+
+  // ✅ chọn phòng ban: "" = Tất cả
+  const [department, setDepartment] = useState("");
+
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("net_desc");
 
@@ -27,13 +35,30 @@ export default function FinanceApprovalPage() {
   const [rows, setRows] = useState([]); // normalized employees
   const [checkState, setCheckState] = useState(null);
 
+  // ✅ fetch departments 1 lần
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const data = await getDepartments();
+        setDepartments(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error("[FE] Fetch departments failed", e);
+        setDepartments([]);
+      }
+    };
+
+    fetchDepartments();
+  }, []);
+
   const fetchData = async () => {
     setLoading(true);
     setError("");
     try {
-      const data = await getPayrollApproval({ month, department });
+      const data = await getPayrollApproval({
+        month,
+        department: department || undefined, // "" => ALL
+      });
 
-      // ✅ debug xem data thật (mở console)
       console.log("[FE] payroll-approval raw =", data);
 
       const normalized = normalizeResponse(data);
@@ -57,6 +82,7 @@ export default function FinanceApprovalPage() {
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
+
     let r = rows.filter(
       (x) =>
         String(x.employeeCode || "").toLowerCase().includes(qq) ||
@@ -69,8 +95,10 @@ export default function FinanceApprovalPage() {
 
       if (sort === "net_desc") return bn - an;
       if (sort === "net_asc") return an - bn;
-      if (sort === "name_asc") return String(a.name || "").localeCompare(String(b.name || ""));
-      if (sort === "name_desc") return String(b.name || "").localeCompare(String(a.name || ""));
+      if (sort === "name_asc")
+        return String(a.name || "").localeCompare(String(b.name || ""));
+      if (sort === "name_desc")
+        return String(b.name || "").localeCompare(String(a.name || ""));
       return 0;
     });
 
@@ -94,7 +122,10 @@ export default function FinanceApprovalPage() {
     setSubmitting(true);
     setError("");
     try {
-      const data = await autoCheckPayroll({ month, department });
+      const data = await autoCheckPayroll({
+        month,
+        department: department || undefined,
+      });
       setCheckState(data);
     } catch (e) {
       console.error(e);
@@ -108,7 +139,7 @@ export default function FinanceApprovalPage() {
     setSubmitting(true);
     setError("");
     try {
-      await approvePayroll({ month, department });
+      await approvePayroll({ month, department: department || undefined });
       await fetchData();
     } catch (e) {
       console.error(e);
@@ -125,12 +156,18 @@ export default function FinanceApprovalPage() {
     setSubmitting(true);
     setError("");
     try {
-      await requestPayrollEdit({ month, department, reason });
+      await requestPayrollEdit({
+        month,
+        department: department || undefined,
+        reason,
+      });
       await fetchData();
       alert("Đã gửi yêu cầu chỉnh sửa.");
     } catch (e) {
       console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Request edit failed");
+      setError(
+        e?.response?.data?.message || e?.message || "Request edit failed"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -145,6 +182,7 @@ export default function FinanceApprovalPage() {
             setMonth={setMonth}
             department={department}
             setDepartment={setDepartment}
+            departments={departments}   // ✅ dùng API departments
             onReload={fetchData}
             loading={loading}
             submitting={submitting}
