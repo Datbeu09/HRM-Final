@@ -1,92 +1,113 @@
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
 
+function normalizeStatus(s) {
+  const v = String(s || "").toUpperCase();
+  // bạn có thể đổi theo enum thật trong DB/UI của bạn
+  const allowed = new Set(["PENDING", "ACCEPTED", "REJECTED"]);
+  if (!allowed.has(v)) throw new ApiError(400, "Invalid status");
+  return v;
+}
+
 module.exports = {
-  async list(query) {
+  async list({ workAssignmentId, employeeId } = {}) {
+    const where = [];
     const params = [];
-    let where = "WHERE 1=1";
 
-    if (query.workAssignmentId) {
-      where += " AND workAssignmentId = ?";
-      params.push(query.workAssignmentId);
+    if (workAssignmentId) {
+      where.push("war.workAssignmentId = ?");
+      params.push(Number(workAssignmentId));
+    }
+    if (employeeId) {
+      where.push("war.employeeId = ?");
+      params.push(Number(employeeId));
     }
 
-    if (query.employeeId) {
-      where += " AND employeeId = ?";
-      params.push(query.employeeId);
-    }
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
 
     const [rows] = await pool.query(
-      `SELECT *
-       FROM workassignmentresponses
-       ${where}
-       ORDER BY id DESC`,
+      `
+      SELECT
+        war.*,
+        e.name AS employeeName,
+        e.employeeCode AS employeeCode
+      FROM workassignmentresponses war
+      LEFT JOIN employees e ON e.id = war.employeeId
+      ${whereSql}
+      ORDER BY war.created_at DESC
+      `,
       params
     );
 
     return rows;
   },
 
-  async getById(id) {
+  async create(body) {
+    const workAssignmentId = body.workAssignmentId ?? body.workAssignmentID; // phòng khi FE gửi sai key
+    const employeeId = body.employeeId;
+
+    if (!workAssignmentId) throw new ApiError(400, "workAssignmentId is required");
+    if (!employeeId) throw new ApiError(400, "employeeId is required");
+
+    const status = normalizeStatus(body.status);
+
+    const rejectReason = body.rejectReason ?? null;
+    if (status === "REJECTED" && !rejectReason) {
+      throw new ApiError(400, "rejectReason is required when status=REJECTED");
+    }
+
+    // check assignment tồn tại (và chưa bị xoá mềm)
+    const [waRows] = await pool.query(
+      "SELECT id FROM workassignments WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+      [workAssignmentId]
+    );
+    if (!waRows.length) throw new ApiError(400, "workAssignmentId is invalid");
+
+    // upsert theo (workAssignmentId, employeeId)
+    const [exists] = await pool.query(
+      `
+      SELECT id FROM workassignmentresponses
+      WHERE workAssignmentId = ? AND employeeId = ?
+      LIMIT 1
+      `,
+      [workAssignmentId, employeeId]
+    );
+
+    if (exists.length) {
+      const id = exists[0].id;
+      await pool.query(
+        `
+        UPDATE workassignmentresponses
+        SET status = ?,
+            respondedAt = NOW(),
+            rejectReason = ?,
+            updated_at = NOW()
+        WHERE id = ?
+        `,
+        [status, rejectReason, id]
+      );
+
+      const [rows] = await pool.query(
+        "SELECT * FROM workassignmentresponses WHERE id = ?",
+        [id]
+      );
+      return rows[0];
+    }
+
+    const [rs] = await pool.query(
+      `
+      INSERT INTO workassignmentresponses
+        (workAssignmentId, employeeId, status, respondedAt, rejectReason, created_at, updated_at)
+      VALUES
+        (?, ?, ?, NOW(), ?, NOW(), NOW())
+      `,
+      [workAssignmentId, employeeId, status, rejectReason]
+    );
+
     const [rows] = await pool.query(
       "SELECT * FROM workassignmentresponses WHERE id = ?",
-      [id]
+      [rs.insertId]
     );
-    return rows[0] || null;
+    return rows[0];
   },
-
-  async create(body) {
-    const {
-      workAssignmentId,
-      employeeId,
-      status,
-      respondedAt,
-      rejectReason
-    } = body;
-
-    const [rs] = await pool.query(
-      `INSERT INTO workassignmentresponses
-       (workAssignmentId, employeeId, status, respondedAt, rejectReason, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        workAssignmentId,
-        employeeId,
-        status,
-        respondedAt ?? null,
-        rejectReason ?? null
-      ]
-    );
-
-    return this.getById(rs.insertId);
-  },
-
-  async update(id, body) {
-    const current = await this.getById(id);
-    if (!current) return null;
-
-    await pool.query(
-      `UPDATE workassignmentresponses
-       SET status = ?,
-           respondedAt = ?,
-           rejectReason = ?,
-           updated_at = NOW()
-       WHERE id = ?`,
-      [
-        body.status ?? current.status,
-        body.respondedAt ?? current.respondedAt,
-        body.rejectReason ?? current.rejectReason,
-        id
-      ]
-    );
-
-    return this.getById(id);
-  },
-
-  async remove(id) {
-    const [rs] = await pool.query(
-      "DELETE FROM workassignmentresponses WHERE id = ?",
-      [id]
-    );
-    return rs.affectedRows > 0;
-  }
 };

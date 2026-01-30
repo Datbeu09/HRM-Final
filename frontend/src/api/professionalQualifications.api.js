@@ -1,60 +1,58 @@
 // src/api/professionalQualifications.api.js
-const axiosClient = require('./axiosClient');
+import axiosClient from "./axiosClient";
 
-// GET all professional qualifications
-const getAllProfessionalQualifications = async () => {
-  try {
-    const response = await axiosClient.get('/professionalQualifications');
-    return response.data;
-  } catch (error) {
-    throw error.response ? error.response.data : new Error('Failed to fetch professional qualifications');
-  }
+const PQ_FIELDS = [
+  "id",
+  "employeeId",
+  "degree",
+  "fieldOfStudy",
+  "educationLevel",
+  "institution",
+  "graduationYear",
+  "foreignLanguageProficiency",
+  "created_at",
+  "updated_at",
+];
+
+const normalizePQ = (r = {}) => ({
+  id: r.id,
+  employeeId: r.employeeId,
+  degree: r.degree,
+  fieldOfStudy: r.fieldOfStudy,
+  educationLevel: r.educationLevel,
+  institution: r.institution,
+  graduationYear: r.graduationYear,
+  foreignLanguageProficiency: r.foreignLanguageProficiency ?? null,
+  createdAt: r.createdAt ?? r.created_at ?? null,
+  updatedAt: r.updatedAt ?? r.updated_at ?? null,
+});
+
+const unwrap = (res) => res?.data ?? res;
+
+export const getProfessionalQualifications = async ({ employeeId } = {}) => {
+  const res = await axiosClient.get("/professional-qualifications", {
+    params: employeeId ? { employeeId } : undefined,
+  });
+  const root = unwrap(res);
+
+  const raw = Array.isArray(root?.data) ? root.data : Array.isArray(root) ? root : [];
+  return raw.map(normalizePQ);
 };
 
-// GET professional qualification by ID
-const getProfessionalQualificationById = async (id) => {
-  try {
-    const response = await axiosClient.get(`/professionalQualifications/${id}`);
-    return response.data;
-  } catch (error) {
-    throw error.response ? error.response.data : new Error('Failed to fetch professional qualification');
-  }
+// (optional) nếu sau này bạn cần CRUD:
+export const createProfessionalQualification = async (payload = {}) => {
+  const res = await axiosClient.post("/professional-qualifications", payload);
+  const root = unwrap(res);
+  return normalizePQ(root?.data || root);
 };
 
-// POST create a new professional qualification
-const createProfessionalQualification = async (professionalQualification) => {
-  try {
-    const response = await axiosClient.post('/professionalQualifications', professionalQualification);
-    return response.data;
-  } catch (error) {
-    throw error.response ? error.response.data : new Error('Failed to create professional qualification');
-  }
+export const updateProfessionalQualification = async (id, payload = {}) => {
+  const res = await axiosClient.put(`/professional-qualifications/${id}`, payload);
+  const root = unwrap(res);
+  return normalizePQ(root?.data || root);
 };
 
-// PUT update an existing professional qualification
-const updateProfessionalQualification = async (id, professionalQualification) => {
-  try {
-    const response = await axiosClient.put(`/professionalQualifications/${id}`, professionalQualification);
-    return response.data;
-  } catch (error) {
-    throw error.response ? error.response.data : new Error('Failed to update professional qualification');
-  }
-};
-
-// DELETE professional qualification
-const deleteProfessionalQualification = async (id) => {
-  try {
-    const response = await axiosClient.delete(`/professionalQualifications/${id}`);
-    return response.data;
-  } catch (error) {
-    throw error.response ? error.response.data : new Error('Failed to delete professional qualification');
-  }
-};
-
-module.exports = {
-  getAllProfessionalQualifications,
-  getProfessionalQualificationById,
-  createProfessionalQualification,
-  updateProfessionalQualification,
-  deleteProfessionalQualification,
+export const deleteProfessionalQualification = async (id) => {
+  const res = await axiosClient.delete(`/professional-qualifications/${id}`);
+  return unwrap(res);
 };

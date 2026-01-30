@@ -6,7 +6,7 @@ const router = express.Router();
 router.use("/employees", require("./employees.routes"));
 router.use("/accounts", require("./accounts.routes"));  // Thêm route accounts
 router.use("/salaryGrades", require("./salaryGrades.routes"));
-router.use("/attendancePolicies", require("./attendancePolicy.routes"));
+router.use("/attendance", require("./attendance.routers"));
 router.use("/departments", require("./departments.routes"));
 router.use("/positions", require("./positions.routes"));
 router.use("/tasks", require("./tasks.routes"));
@@ -27,6 +27,9 @@ router.use("/benefits", require("./benefits.routes"));
 router.use("/finance", require("./finance.routes"));
 router.use("/monthlyAttendance", require("./monthlyAttendance.routes"));
 router.use("/monthlySalary", require("./monthlySalary.routes"));
+router.use("/payroll-approval", require("./payrollApproval.routes"));
+router.use("/payroll-detail", require("./payrollDetail.routes"));
+
 
 
 

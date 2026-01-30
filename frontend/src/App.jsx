@@ -11,21 +11,29 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Employees from "./pages/EmployeesPages/Employees";
 import EmployeesDetail from "./pages/EmployeesPages/EmployeesDetail";
+
 import AssignmentAdmin from "./pages/Assignments/AssignmentAdmin";
 import AssignmentsUser from "./pages/Assignments/AssignmentsUser";
+
 import Reports from "./pages/Reports";
 import ApprovalsAdmin from "./pages/Approvals/ApprovalsAdmin";
 import ApprovalsEmployee from "./pages/Approvals/ApprovalsEmployee";
+
 import AccountPermission from "./pages/AccountPermission";
 import BenefitsInsurance from "./pages/BenefitsInsurance";
 import Notifications from "./pages/Notifications";
 
-import AttendanceSummary from "./pages/AccountantPages/AttendanceSummary";
-import FinanceDashboard from "./pages/AccountantPages/FinanceDashboard";
-import PayrollApprovalPage from "./pages/AccountantPages/PayrollApprovalPage";
-import PayrollDetail from "./pages/AccountantPages/PayrollDetail";
+// ✅ Attendance pages (bạn đang có trong tree)
+import Attendance from "./pages/Attendance/Attendance";
+import AttendanceDetail from "./pages/Attendance/AttendanceDetail";
+
+// AccountantPages
+import AttendanceSummary from "./pages/Attendance/AttendanceSummary";
+import FinanceDashboard from "./pages/FinanceDashboard";
+import PayrollApprovalPage from "./pages/Payroll/PayrollApprovalPage";
+import PayrollDetail from "./pages/Payroll/PayrollDetail";
 import TaxAndDeduction from "./pages/AccountantPages/TaxAndDeduction";
-import SalaryDetail from "./pages/AccountantPages/SalaryDetail";
+
 
 export default function App() {
   return (
@@ -46,6 +54,7 @@ export default function App() {
                 <Route element={<ProtectedRoute permissions="EMPLOYEE_VIEW" />}>
                   <Route path="/employees" element={<Employees />} />
                   <Route path="/employees/:id" element={<EmployeesDetail />} />
+                  <Route path="/profile/:id" element={<EmployeesDetail />} />
                 </Route>
 
                 {/* tasks */}
@@ -66,17 +75,23 @@ export default function App() {
 
                 {/* employee requests */}
                 <Route element={<ProtectedRoute permissions="LEAVE_REQUEST" />}>
-                  <Route path="/approvals-employee" element={<ApprovalsEmployee />} />
+                  <Route
+                    path="/approvals-employee"
+                    element={<ApprovalsEmployee />}
+                  />
                 </Route>
 
-                {/* notifications (tuỳ bạn muốn gắn quyền nào) */}
+                {/* notifications */}
                 <Route element={<ProtectedRoute permissions="REQUEST_APPROVE" />}>
                   <Route path="/notifications" element={<Notifications />} />
                 </Route>
 
                 {/* accounts */}
                 <Route element={<ProtectedRoute permissions="ACCOUNT_MANAGE" />}>
-                  <Route path="/account-permission" element={<AccountPermission />} />
+                  <Route
+                    path="/account-permission"
+                    element={<AccountPermission />}
+                  />
                 </Route>
 
                 {/* benefits */}
@@ -84,32 +99,48 @@ export default function App() {
                   <Route path="/benefits" element={<BenefitsInsurance />} />
                 </Route>
 
+                {/* ✅ attendance checkin */}
+                <Route element={<ProtectedRoute permissions="ATTENDANCE_CHECKIN" />}>
+                  <Route path="/attendance-checkin" element={<Attendance />} />
+                  <Route
+                    path="/attendance/:attendanceId"
+                    element={<AttendanceDetail />}
+                  />
+                </Route>
+
+                {/* attendance summary */}
+                <Route element={<ProtectedRoute permissions="ATTENDANCE_SUMMARY" />}>
+                  <Route
+                    path="/attendance-summary"
+                    element={<AttendanceSummary />}
+                  />
+                </Route>
+
                 {/* finance overview */}
                 <Route element={<ProtectedRoute permissions="FINANCE_OVERVIEW" />}>
-                  <Route path="/finance" element={<FinanceDashboard />} />
+                  <Route path="/finance" element={<FinanceDashboard />} />              
                 </Route>
 
                 {/* salary */}
-                <Route element={<ProtectedRoute permissions="SALARY_VIEW" />}>
-                  <Route path="/salary" element={<SalaryDetail />} />
-                  <Route path="/payroll/:id" element={<PayrollDetail />} />
-                </Route>
-
-                {/* attendance */}
-                <Route element={<ProtectedRoute permissions="ATTENDANCE_SUMMARY" />}>
-                  <Route path="/attendance-summary" element={<AttendanceSummary />} />
-                </Route>
+                {/* <Route element={<ProtectedRoute permissions="SALARY_VIEW" />}>
+                  <Route path="/salary" element={<PayrollDetail />} />
+                  <Route path="/payroll/:id" />
+                </Route> */}
 
                 {/* payroll approve */}
                 <Route element={<ProtectedRoute permissions="SALARY_APPROVE" />}>
-                  <Route path="/payroll-approval" element={<PayrollApprovalPage />} />
+                  <Route
+                    path="/payroll-approval"
+                    element={<PayrollApprovalPage />}
+                  />
+                 <Route path="/accountant/payroll/:employeeId" element={<PayrollDetail />} />
+
                 </Route>
 
                 {/* tax */}
                 <Route element={<ProtectedRoute permissions="TAX_DEDUCTION" />}>
                   <Route path="/tax-deduction" element={<TaxAndDeduction />} />
                 </Route>
-
               </Route>
             </Route>
 

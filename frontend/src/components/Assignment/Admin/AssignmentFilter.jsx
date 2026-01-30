@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { getEmployees } from "../../../api/employees.api";
 
 export default function AssignmentFilter({
@@ -7,10 +7,8 @@ export default function AssignmentFilter({
   openModal,
 }) {
   const [employees, setEmployees] = useState([]);
-  const [filteredEmployees, setFilteredEmployees] = useState([]);
-
-  const [department, setDepartment] = useState("");
-  const [employeeName, setEmployeeName] = useState("");
+  const [departmentName, setDepartmentName] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
   const [taskName, setTaskName] = useState("");
   const [deadline, setDeadline] = useState(""); // YYYY-MM-DD
 
@@ -18,41 +16,45 @@ export default function AssignmentFilter({
     getEmployees().then((data) => setEmployees(Array.isArray(data) ? data : []));
   }, []);
 
-  useEffect(() => {
-    if (!department) {
-      setFilteredEmployees([]);
-      setEmployeeName("");
-      return;
-    }
-    const list = employees.filter((emp) => emp.department === department);
-    setFilteredEmployees(list);
-    setEmployeeName("");
-  }, [department, employees]);
+  const filteredEmployees = useMemo(() => {
+    if (!departmentName) return [];
+    // employees table có field "department" (text)
+    return employees.filter((emp) => emp.department === departmentName);
+  }, [departmentName, employees]);
 
   useEffect(() => {
     const filtered = assignments.filter((a) => {
-      const matchDepartment = !department || a.department === department;
-      const matchEmployee = !employeeName || a.employeeName === employeeName;
+      const matchDepartment =
+        !departmentName || a.departmentName === departmentName;
+
+      const matchEmployee =
+        !employeeId || String(a.employeeId) === String(employeeId);
+
       const matchTask =
-        !taskName || (a.taskName || "").toLowerCase().includes(taskName.toLowerCase());
+        !taskName ||
+        String(a.taskName || "").toLowerCase().includes(taskName.toLowerCase());
+
       const matchDeadline = !deadline || a.deadlineText === deadline;
 
       return matchDepartment && matchEmployee && matchTask && matchDeadline;
     });
 
     onFilter(filtered);
-  }, [department, employeeName, taskName, deadline, assignments, onFilter]);
+  }, [departmentName, employeeId, taskName, deadline, assignments, onFilter]);
 
   return (
     <div className="bg-white p-4 rounded-xl shadow mb-6">
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <select
-          value={department}
-          onChange={(e) => setDepartment(e.target.value)}
+          value={departmentName}
+          onChange={(e) => {
+            setDepartmentName(e.target.value);
+            setEmployeeId("");
+          }}
           className="px-4 py-2 border rounded-lg"
         >
           <option value="">Tất cả phòng ban</option>
-          {[...new Set(assignments.map((a) => a.department))].map((dep) => (
+          {[...new Set(assignments.map((a) => a.departmentName))].map((dep) => (
             <option key={dep} value={dep}>
               {dep}
             </option>
@@ -60,23 +62,20 @@ export default function AssignmentFilter({
         </select>
 
         <select
-          value={employeeName}
-          onChange={(e) => setEmployeeName(e.target.value)}
-          disabled={!department}
+          value={employeeId}
+          onChange={(e) => setEmployeeId(e.target.value)}
+          disabled={!departmentName}
           className="px-4 py-2 border rounded-lg disabled:bg-gray-100"
         >
           <option value="">
-            {department ? "Chọn nhân viên" : "Chọn phòng ban trước"}
+            {departmentName ? "Chọn nhân viên" : "Chọn phòng ban trước"}
           </option>
 
-          {filteredEmployees.map((emp) => {
-            const name = emp.name || emp.name || "";
-            return (
-              <option key={emp.id} value={name}>
-                {emp.employeeCode} - {name}
-              </option>
-            );
-          })}
+          {filteredEmployees.map((emp) => (
+            <option key={emp.id} value={emp.id}>
+              {emp.employeeCode} - {emp.name}
+            </option>
+          ))}
         </select>
 
         <input

@@ -1,75 +1,93 @@
 // src/api/approvals.api.js
-import axios from "axios";
+import axiosClient from "./axiosClient";
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000/api",
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-const unwrap = (res) => {
-  if (res?.data?.success) return res.data.data;
-  return res?.data;
-};
+/* =========================
+   STATUS CONSTANTS
+========================= */
 
 export const APPROVAL_STATUS = {
-  PENDING: "Chờ duyệt",
-  APPROVED: "Đã duyệt",
-  REJECTED: "Từ chối",
+  PENDING: "Pending",
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
 };
 
-export const approvalStatusLabelVI = (s) => s || "N/A";
+/* =========================
+   STATUS LABEL (VI)
+========================= */
 
-// Admin: list all
-export async function getApprovals(params = {}) {
-  const res = await api.get("/approvals", { params });
-  return unwrap(res);
-}
+export const approvalStatusLabelVI = (status) => {
+  if (!status) return "";
 
-// Employee: list own (BE sẽ ép theo role)
-export async function getApprovalsByEmployeeId(employeeId) {
-  const res = await api.get("/approvals", { params: { employeeId } });
-  return unwrap(res);
-}
+  switch (status) {
+    case "Pending":
+    case "Chờ duyệt":
+      return "Chờ duyệt";
 
-export async function getApprovalById(id) {
-  const res = await api.get(`/approvals/${id}`);
-  return unwrap(res);
-}
+    case "Approved":
+    case "Đã duyệt":
+      return "Đã duyệt";
 
-// ✅ CREATE: chỉ gửi đúng field cần thiết
-export async function createApproval(payload) {
-  const body = {
-    employeeId: payload.employeeId,
-    type: payload.type,
-    reason: payload.reason,
-    startDate: payload.startDate,
-    endDate: payload.endDate,
-  };
-  const res = await api.post("/approvals", body);
-  return unwrap(res);
-}
+    case "Rejected":
+    case "Từ chối":
+      return "Từ chối";
 
-export async function updateApproval(id, payload) {
-  const res = await api.put(`/approvals/${id}`, payload);
-  return unwrap(res);
-}
+    default:
+      return status;
+  }
+};
 
-export async function deleteApproval(id) {
-  const res = await api.delete(`/approvals/${id}`);
-  return unwrap(res);
-}
+/* =========================
+   ADMIN APIs
+========================= */
 
-export async function approveApproval(id, note = "") {
-  const res = await api.post(`/approvals/${id}/approve`, note ? { note } : {});
-  return unwrap(res);
-}
+// Lấy tất cả approvals (Admin)
+export const getApprovals = async () => {
+  const res = await axiosClient.get("/approvals");
+  return Array.isArray(res.data?.data) ? res.data.data : [];
+};
 
-export async function rejectApproval(id, note = "") {
-  const res = await api.post(`/approvals/${id}/reject`, note ? { note } : {});
-  return unwrap(res);
-}
+export const approveApproval = async (id, payload = {}) => {
+  const res = await axiosClient.patch(`/approvals/${id}/approve`, payload);
+  return res.data?.data ?? res.data ?? {};
+};
+
+export const rejectApproval = async (id, payload = {}) => {
+  const res = await axiosClient.patch(`/approvals/${id}/reject`, payload);
+  return res.data?.data ?? res.data ?? {};
+};
+
+export const deleteApproval = async (id) => {
+  const res = await axiosClient.delete(`/approvals/${id}`);
+  return res.data?.data ?? res.data ?? {};
+};
+
+/* =========================
+   EMPLOYEE APIs
+========================= */
+
+// Lấy approvals theo nhân viên
+export const getApprovalsByEmployeeId = async (employeeId) => {
+  const res = await axiosClient.get(`/approvals/employee/${employeeId}`);
+  return Array.isArray(res.data?.data) ? res.data.data : [];
+};
+
+// Tạo yêu cầu mới
+export const createApproval = async (payload) => {
+  const res = await axiosClient.post("/approvals", payload);
+  return res.data?.data ?? res.data ?? {};
+};
+
+/* =========================
+   Finance / LEAVE
+========================= */
+
+export const getApprovedLeavesByEmployeeMonth = async ({
+  employeeId,
+  month,
+  year,
+}) => {
+  const res = await axiosClient.get("/approvals/leaves/approved", {
+    params: { employeeId, month, year },
+  });
+  return Array.isArray(res.data?.data) ? res.data.data : [];
+};

@@ -9,13 +9,13 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd }) => {
 
   const contractLabel = (v) => {
     if (v === "Biên chế") return "Biên chế";
-    if (v === "HĐLĐ") return "Hợp đồng";
+    if (v === "Hợp đồng") return "Hợp đồng";
     return v || "N/A";
   };
 
   const contractBadgeCls = (v) => {
     if (v === "Biên chế") return "bg-green-500";
-    if (v === "HĐLĐ") return "bg-orange-500";
+    if (v === "Hợp đồng") return "bg-orange-500";
     return "bg-slate-400";
   };
 

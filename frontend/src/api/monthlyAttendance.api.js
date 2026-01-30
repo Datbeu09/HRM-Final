@@ -2,46 +2,81 @@
 import axiosClient from "./axiosClient";
 
 /**
- * Lưu ý response backend của bạn có thể là:
- * 1) { success:true, data:[...] }  (nếu bạn đã sửa theo mẫu mình gợi ý)
- * 2) [...]                        (nếu controller đang res.json(rows) kiểu cũ)
- * => Hàm normalizeData() sẽ tự xử lý cả 2
+ * Lấy toàn bộ chấm công tháng (Admin/Accountant view)
+ * Backend nên trả: { success: true, data: [...] }
  */
-
-const normalizeData = (res) => {
-  const payload = res?.data;
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.data?.data)) return payload.data.data; // phòng trường hợp bọc 2 lớp
-  return [];
-};
-
-// GET /monthlyAttendance
 export const getAllMonthlyAttendance = async () => {
   const res = await axiosClient.get("/monthlyAttendance");
-  return normalizeData(res);
+  return Array.isArray(res.data?.data) ? res.data.data : [];
 };
 
-// GET /monthlyAttendance/employee/:employeeId
-export const getMonthlyAttendanceByEmployeeId = async (employeeId) => {
-  const res = await axiosClient.get(`/monthlyAttendance/employee/${employeeId}`);
-  return normalizeData(res);
+/**
+ * Lấy chấm công theo nhân viên + tháng + năm
+ */
+export const getMonthlyAttendanceByEmployeeMonth = async ({
+  employeeId,
+  month,
+  year,
+}) => {
+  const res = await axiosClient.get("/monthlyAttendance/by-employee-month", {
+    params: { employeeId, month, year },
+  });
+  return res.data?.data || null;
 };
 
-// POST /monthlyAttendance
-export const addMonthlyAttendance = async (data) => {
-  const res = await axiosClient.post("/monthlyAttendance", data);
-  return res.data;
+/**
+ * Tạo bản ghi chấm công tháng nếu chưa có
+ */
+export const createMonthlyAttendanceIfMissing = async ({
+  employeeId,
+  month,
+  year,
+}) => {
+  const res = await axiosClient.post("/monthlyAttendance/ensure", {
+    employeeId,
+    month,
+    year,
+  });
+  return res.data?.data || null;
 };
 
-// PUT /monthlyAttendance/:id
-export const updateMonthlyAttendance = async (id, data) => {
-  const res = await axiosClient.put(`/monthlyAttendance/${id}`, data);
-  return res.data;
+/**
+ * Submit chấm công tháng
+ */
+export const submitMonthlyAttendance = async ({ id }) => {
+  const res = await axiosClient.post(`/monthlyAttendance/${id}/submit`);
+  return res.data?.data || null;
 };
 
-// DELETE /monthlyAttendance/:id
-export const removeMonthlyAttendance = async (id) => {
-  const res = await axiosClient.delete(`/monthlyAttendance/${id}`);
-  return res.data;
+/**
+ * Approve chấm công tháng
+ */
+export const approveMonthlyAttendance = async ({ id }) => {
+  const res = await axiosClient.post(`/monthlyAttendance/${id}/approve`);
+  return res.data?.data || null;
+};
+
+/**
+ * Reject chấm công tháng
+ */
+export const rejectMonthlyAttendance = async ({ id, rejectReason }) => {
+  const res = await axiosClient.post(`/monthlyAttendance/${id}/reject`, {
+    rejectReason,
+  });
+  return res.data?.data || null;
+};
+
+/**
+ * Lock/Unlock chấm công tháng
+ */
+export const lockMonthlyAttendance = async ({ id, locked = true }) => {
+  const res = await axiosClient.patch(`/monthlyAttendance/${id}/lock`, {
+    locked,
+  });
+  return res.data?.data || null;
+};
+export const getMonthlyAttendanceById = async (id) => {
+  const arr = await getAllMonthlyAttendance();
+  const found = (Array.isArray(arr) ? arr : []).find((x) => String(x.id) === String(id));
+  return found || null;
 };

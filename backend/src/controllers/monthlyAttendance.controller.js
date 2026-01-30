@@ -1,68 +1,82 @@
-const monthlyAttendanceService = require("../services/monthlyAttendance.service");
+// backend/src/controllers/monthlyAttendance.controller.js
+const service = require("../services/monthlyAttendance.service");
 const ApiError = require("../utils/ApiError");
 
 module.exports = {
-  // GET /monthly-attendance
-  async getAll(req, res, next) {
+  async list(req, res, next) {
     try {
-      const data = await monthlyAttendanceService.getAll();
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const rows = await service.list(req.query, req.user);
+      res.json({ success: true, data: rows });
+    } catch (e) {
+      next(e);
     }
   },
 
-  // GET /monthly-attendance/:id
-  async getById(req, res, next) {
+  async getByEmployeeMonth(req, res, next) {
     try {
-      const data = await monthlyAttendanceService.getById(req.params.id);
-      if (!data) return next(new ApiError(404, "Not found"));
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const { employeeId, month, year } = req.query;
+      if (!employeeId || !month || !year) {
+        throw new ApiError(400, "employeeId, month, year are required");
+      }
+      const row = await service.getByEmployeeMonth({ employeeId, month, year }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
     }
   },
 
-  // GET /monthly-attendance/employee/:employeeId
-  async getByEmployee(req, res, next) {
+  async ensure(req, res, next) {
     try {
-      const data = await monthlyAttendanceService.getByEmployee(req.params.employeeId);
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const { employeeId, month, year } = req.body;
+      if (!employeeId || !month || !year) {
+        throw new ApiError(400, "employeeId, month, year are required");
+      }
+      const row = await service.ensure({ employeeId, month, year }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
     }
   },
 
-  // POST /monthly-attendance
-  async create(req, res, next) {
+  async submit(req, res, next) {
     try {
-      const id = await monthlyAttendanceService.create(req.body);
-      const data = await monthlyAttendanceService.getById(id);
-      res.status(201).json({ success: true, message: "Created", data });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const { id } = req.params;
+      const row = await service.submit({ id }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
     }
   },
 
-  // PUT /monthly-attendance/:id
-  async update(req, res, next) {
+  async approve(req, res, next) {
     try {
-      const data = await monthlyAttendanceService.update(req.params.id, req.body);
-      if (!data) return next(new ApiError(404, "Not found"));
-      res.status(200).json({ success: true, message: "Updated", data });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const { id } = req.params;
+      const row = await service.approve({ id }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
     }
   },
 
-  // DELETE /monthly-attendance/:id
-  async remove(req, res, next) {
+  async reject(req, res, next) {
     try {
-      const ok = await monthlyAttendanceService.remove(req.params.id);
-      if (!ok) return next(new ApiError(404, "Not found"));
-      res.status(200).json({ success: true, message: "Deleted" });
-    } catch (err) {
-      next(new ApiError(500, err.message));
+      const { id } = req.params;
+      const { rejectReason } = req.body || {};
+      const row = await service.reject({ id, rejectReason }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  async lock(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { locked } = req.body || {};
+      const row = await service.lock({ id, locked }, req.user);
+      res.json({ success: true, data: row });
+    } catch (e) {
+      next(e);
     }
   },
 };

@@ -1,287 +1,324 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getEmployees } from "../../api/employees.api";
-import ClosePopup from "./ClosePopup";
-import { addWorkAssignment } from "../../api/workAssignments.api";
+import { createWorkAssignment } from "../../api/workAssignments.api";
+import { getDepartments } from "../../api/departments.api";
+import { getTasks } from "../../api/tasks.api";
+
+// PRIORITIES giữ UI nếu bạn thích, nhưng KHÔNG gửi lên BE vì DB không có cột priority
+const PRIORITIES = ["Thấp", "Trung bình", "Cao"];
 
 const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
-  const [taskName, setTaskName] = useState("");
-  const [department, setDepartment] = useState(""); // string để lọc nhân viên
-  const [employeeId, setEmployeeId] = useState("");
-
-  const [assignedDate, setAssignedDate] = useState("");
-  const [deadline, setDeadline] = useState("");
-  const [status, setStatus] = useState("Pending");
-  const [notes, setNotes] = useState("");
-
-  // bắt buộc theo DB
-  const [departmentId, setDepartmentId] = useState("");
-  const [positionId, setPositionId] = useState("");
-
   const [allEmployees, setAllEmployees] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [employeesInDept, setEmployeesInDept] = useState([]);
+  const [tasks, setTasks] = useState([]);
+
+  const [departmentId, setDepartmentId] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [taskId, setTaskId] = useState("");
+
+  const [taskName, setTaskName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [assignedDate, setAssignedDate] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [priority, setPriority] = useState("Trung bình"); // UI only
+  const [status, setStatus] = useState("PENDING");
 
   useEffect(() => {
-    const fetchEmployees = async () => {
-      const data = await getEmployees();
-      const list = Array.isArray(data) ? data : [];
-      setAllEmployees(list);
+    if (!isOpen) return;
 
-      const deptSet = new Set(list.map((emp) => emp.department).filter(Boolean));
-      setDepartments([...deptSet]);
+    const run = async () => {
+      try {
+        const [emps, deps, ts] = await Promise.all([
+          getEmployees(),
+          getDepartments(),
+          getTasks(),
+        ]);
+        setAllEmployees(Array.isArray(emps) ? emps : []);
+        setDepartments(Array.isArray(deps) ? deps : []);
+        setTasks(Array.isArray(ts) ? ts : []);
+      } catch (e) {
+        console.error("[AssignmentPopup] load data error:", e);
+        setAllEmployees([]);
+        setDepartments([]);
+        setTasks([]);
+      }
     };
-    fetchEmployees();
-  }, []);
+
+    run();
+  }, [isOpen]);
 
   useEffect(() => {
-    if (department) {
-      const filtered = allEmployees.filter((emp) => emp.department === department);
-      setEmployeesInDept(filtered);
-      setEmployeeId("");
-    } else {
-      setEmployeesInDept([]);
-      setEmployeeId("");
-    }
-  }, [department, allEmployees]);
+    if (!isOpen) return;
+
+    setDepartmentId("");
+    setEmployeeId("");
+    setTaskId("");
+    setTaskName("");
+    setNotes("");
+    setAssignedDate("");
+    setDeadline("");
+    setPriority("Trung bình");
+    setStatus("PENDING");
+  }, [isOpen]);
+
+  const selectedDepartment = useMemo(
+    () => departments.find((d) => String(d.id) === String(departmentId)) || null,
+    [departments, departmentId]
+  );
+
+  // ✅ employees hiện tại lọc theo employees.department (text) khớp departmentName
+  const employeesInDept = useMemo(() => {
+    if (!selectedDepartment?.departmentName) return [];
+    return allEmployees.filter((emp) => emp.department === selectedDepartment.departmentName);
+  }, [allEmployees, selectedDepartment]);
 
   const selectedEmployee = useMemo(
     () => allEmployees.find((e) => String(e.id) === String(employeeId)) || null,
     [allEmployees, employeeId]
   );
 
-  // reset form khi mở
+  const selectedTask = useMemo(
+    () => tasks.find((t) => String(t.id) === String(taskId)) || null,
+    [tasks, taskId]
+  );
+
   useEffect(() => {
-    if (isOpen) {
-      setTaskName("");
-      setDepartment("");
-      setEmployeeId("");
-      setAssignedDate("");
-      setDeadline("");
-      setStatus("Pending");
-      setNotes("");
-      setDepartmentId("");
-      setPositionId("");
-    }
-  }, [isOpen]);
+    if (!taskId || !selectedTask) return;
+    setTaskName((prev) => (prev ? prev : selectedTask.taskName || ""));
+    setNotes((prev) => (prev ? prev : selectedTask.description || ""));
+  }, [taskId, selectedTask]);
+
+  useEffect(() => {
+    setEmployeeId("");
+  }, [departmentId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // lấy assignedByAccountId từ localStorage nếu có
     const assignedByAccountId = Number(localStorage.getItem("accountId") || 0);
 
     const payload = {
       employeeId: Number(employeeId),
-      departmentId: Number(departmentId),
-      positionId: Number(positionId),
-      taskName,
-      assignedDate, // YYYY-MM-DD ok
-      deadline,
-      status,
-      notes,
-      assignedByAccountId,
+      departmentId: departmentId ? Number(departmentId) : null,
+      taskId: taskId ? Number(taskId) : null,
+
+      taskName: String(taskName || "").trim(),
+      notes: notes ? String(notes) : null,
+
+      assignedDate: assignedDate || null,
+      deadline: deadline || null,
+
+      status: status || "PENDING",
+      assignedByAccountId: assignedByAccountId || null,
+      // ❌ priority: DB không có cột => không gửi
     };
 
-    // validate đúng theo DB
-    if (!payload.employeeId) return alert("Vui lòng chọn nhân viên");
-    if (!payload.departmentId) return alert("Vui lòng nhập departmentId");
-    if (!payload.positionId) return alert("Vui lòng nhập positionId");
-    if (!payload.assignedByAccountId) return alert("Thiếu assignedByAccountId (cần lưu accountId sau login)");
+    if (!payload.departmentId) return alert("Vui lòng chọn phòng ban");
+    if (!payload.employeeId) return alert("Vui lòng chọn nhân viên phụ trách");
+
+    // ✅ backend cho phép taskId OR taskName
+    if (!payload.taskId && !payload.taskName) return alert("Vui lòng chọn task hoặc nhập Tên nhiệm vụ");
+
+    if (!payload.assignedDate) return alert("Vui lòng chọn Ngày bắt đầu");
+    if (!payload.deadline) return alert("Vui lòng chọn Deadline");
+
+    if (payload.assignedDate && payload.deadline && payload.deadline < payload.assignedDate) {
+      return alert("Deadline không được nhỏ hơn Ngày bắt đầu");
+    }
 
     try {
-      await addWorkAssignment(payload);
-      closeModal();
+      await createWorkAssignment(payload);
+      closeModal?.();
       onCreated?.();
     } catch (error) {
       console.error("Lỗi khi thêm phân công công việc:", error);
-      alert("Thêm phân công thất bại. Kiểm tra payload / backend validate.");
+      alert("Thêm phân công thất bại. Kiểm tra payload / backend.");
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <ClosePopup onClose={closeModal}>
-      <div className="bg-white w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100">
-          <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-lg font-bold text-gray-800">Phân công công việc</h2>
-              <p className="text-xs text-gray-500">Thiết lập trách nhiệm và thời hạn</p>
-            </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 sm:px-8">
+      <div className="absolute inset-0 bg-gray-500/60" onClick={closeModal} />
 
-            <button
-              type="button"
-              onClick={closeModal}
-              className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-50 rounded-lg"
-            >
-              <span className="material-symbols-outlined text-xl">close</span>
-            </button>
-          </div>
+      <div className="relative w-full max-w-3xl p-8 bg-white rounded-2xl shadow-lg overflow-auto max-h-[90vh]">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-semibold text-center flex-1">Tạo nhiệm vụ phân công</h2>
+
+          <button
+            type="button"
+            onClick={closeModal}
+            className="ml-4 text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100"
+            aria-label="Đóng"
+          >
+            <span className="material-symbols-outlined text-[22px]">close</span>
+          </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="px-6 py-5 overflow-y-auto custom-scrollbar">
-          <div className="space-y-4">
-            {/* Task name */}
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-5">
             <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                Tên nhiệm vụ
-              </label>
-              <input
-                value={taskName}
-                onChange={(e) => setTaskName(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:ring-2 focus:ring-teal-600/20 focus:border-teal-600 outline-none"
-                placeholder="VD: Prepare payroll for Jan"
-                required
-              />
-            </div>
-
-            {/* Department (string để lọc nhân viên) */}
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                Phòng ban
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phòng ban</label>
               <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
+                value={departmentId}
+                onChange={(e) => setDepartmentId(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                 required
               >
-                <option value="">Chọn phòng ban</option>
+                <option value="">-- Chọn --</option>
                 {departments.map((d) => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Employee */}
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                Nhân viên
-              </label>
-              <select
-                value={employeeId}
-                onChange={(e) => setEmployeeId(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 disabled:bg-gray-100"
-                disabled={!department}
-                required
-              >
-                <option value="">
-                  {department ? "Chọn nhân viên" : "Chọn phòng ban trước"}
-                </option>
-                {employeesInDept.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.employeeCode} - {emp.name || emp.name}
+                  <option key={d.id} value={d.id}>
+                    {d.departmentName || d.departmentCode || `Dept ${d.id}`}
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nhân viên phụ trách</label>
+              <select
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none disabled:bg-gray-100"
+                disabled={!departmentId}
+                required
+              >
+                <option value="">{departmentId ? "Chọn NV" : "Chọn phòng ban trước"}</option>
+                {employeesInDept.map((emp) => (
+                  <option key={emp.id} value={emp.id}>
+                    {emp.employeeCode} - {emp.name}
+                  </option>
+                ))}
+              </select>
+
               {selectedEmployee && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Đã chọn: <b>{selectedEmployee.employeeCode}</b> - {selectedEmployee.name || selectedEmployee.name}
+                <p className="text-xs text-gray-500 mt-2">
+                  Đã chọn: <b>{selectedEmployee.employeeCode}</b> - {selectedEmployee.name}
                 </p>
               )}
             </div>
 
-            {/* REQUIRED IDs for DB */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                  departmentId (DB)
-                </label>
-                <input
-                  type="number"
-                  value={departmentId}
-                  onChange={(e) => setDepartmentId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
-                  placeholder="VD: 2"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                  positionId (DB)
-                </label>
-                <input
-                  type="number"
-                  value={positionId}
-                  onChange={(e) => setPositionId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
-                  placeholder="VD: 2"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Task có sẵn (tuỳ chọn)
+              </label>
+              <select
+                value={taskId}
+                onChange={(e) => setTaskId(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              >
+                <option value="">-- Không chọn --</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.taskCode ? `${t.taskCode} - ` : ""}{t.taskName}
+                  </option>
+                ))}
+              </select>
+
+              {selectedTask && (
+                <p className="text-xs text-gray-500 mt-2">
+                  Mô tả task mẫu: {selectedTask.description || "(trống)"}
+                </p>
+              )}
             </div>
 
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tên nhiệm vụ</label>
+              <input
+                value={taskName}
+                onChange={(e) => setTaskName(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                placeholder="VD: Hoàn thiện báo cáo tuần"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                * Có thể để trống nếu bạn đã chọn task có sẵn.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Mô tả chi tiết</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                rows={4}
+                placeholder="Mô tả yêu cầu, tiêu chí hoàn thành..."
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                  Ngày giao
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ngày bắt đầu</label>
                 <input
                   type="date"
                   value={assignedDate}
                   onChange={(e) => setAssignedDate(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
+                  className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   required
                 />
               </div>
+
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                  Deadline
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Deadline</label>
                 <input
                   type="date"
                   value={deadline}
                   onChange={(e) => setDeadline(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
+                  className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   required
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Độ ưu tiên</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                >
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">* UI hiển thị, chưa lưu vào DB.</p>
+              </div>
             </div>
 
-            {/* Status */}
             <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                Trạng thái
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Trạng thái</label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
+                className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               >
-                <option value="Pending">Pending</option>
-                <option value="InProgress">InProgress</option>
-                <option value="Done">Done</option>
+                <option value="PENDING">PENDING</option>
+                <option value="IN_PROGRESS">IN_PROGRESS</option>
+                <option value="DONE">DONE</option>
               </select>
             </div>
 
-            {/* Notes */}
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">
-                Ghi chú
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200"
-                rows={3}
-                placeholder="VD: Need draft by 20th"
-              />
+            <div className="flex justify-end mt-2 space-x-4">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2 bg-gray-200 rounded-xl hover:bg-gray-300"
+              >
+                Hủy
+              </button>
+
+              <button
+                type="submit"
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700"
+              >
+                Tạo nhiệm vụ
+              </button>
             </div>
 
-            <button
-              type="submit"
-              className="px-6 py-2 text-xs font-semibold text-white bg-[#009688] hover:bg-[#00796b] rounded-lg shadow-md"
-            >
-              Phân công
-            </button>
           </div>
         </form>
       </div>
-    </ClosePopup>
+    </div>
   );
 };
 

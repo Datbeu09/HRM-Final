@@ -2,20 +2,17 @@ const ApiError = require("../utils/ApiError");
 const service = require("../services/tasks.service");
 
 function validateCreate(body) {
-  if (!body.taskName)
-    throw new ApiError(400, "taskName is required");
-
-  if (body.taskCode === "")
+  if (!body.taskName) throw new ApiError(400, "taskName is required");
+  if (body.taskCode !== undefined && body.taskCode === "")
     throw new ApiError(400, "taskCode cannot be empty");
 }
-
 function validateUpdate(body) {
-  if (body.taskName === "")
+  if (body.taskName !== undefined && body.taskName === "")
     throw new ApiError(400, "taskName cannot be empty");
-
-  if (body.taskCode === "")
+  if (body.taskCode !== undefined && body.taskCode === "")
     throw new ApiError(400, "taskCode cannot be empty");
 }
+
 
 module.exports = {
   async listTasks(req, res, next) {

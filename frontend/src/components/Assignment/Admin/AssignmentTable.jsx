@@ -41,7 +41,7 @@ const AssignmentTable = ({ assignments = [] }) => {
                 <tr key={a.id} className="hover:bg-gray-50 transition">
                   <td className="border px-3 py-2">{a.employeeCode}</td>
                   <td className="border px-3 py-2">{a.employeeName}</td>
-                  <td className="border px-3 py-2">{a.department}</td>
+                  <td className="border px-3 py-2">{a.departmentName}</td>
                   <td className="border px-3 py-2">{a.taskName}</td>
                   <td className="border px-3 py-2 text-center">{a.assignedDateText}</td>
                   <td className="border px-3 py-2 text-center">{a.deadlineText}</td>

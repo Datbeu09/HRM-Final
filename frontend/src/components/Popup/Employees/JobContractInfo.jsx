@@ -1,7 +1,27 @@
-import React from "react";
+// src/components/Popup/Employees/JobContractInfo.jsx
+import React, { useMemo } from "react";
 import Field from "../../common/Field";
 
-const JobContractInfo = ({ form, handleChange }) => {
+const normalizeContractTypeLabel = (v) => {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return "";
+  if (s === "hop_dong" || s.includes("hợp đồng")) return "Hợp đồng";
+  if (s === "bien_che" || s.includes("biên chế")) return "Biên chế";
+  return String(v || "").trim();
+};
+
+const JobContractInfo = ({ form, handleChange, options }) => {
+  const departments = options?.departments || [];
+  const positions = options?.positions || [];
+
+  const contractTypes = useMemo(() => {
+    const list = (options?.contractTypes || []).map(normalizeContractTypeLabel).filter(Boolean);
+    return list.length ? Array.from(new Set(list)) : ["Hợp đồng", "Biên chế"];
+  }, [options]);
+
+  // ✅ chỉ hiện ngày kết thúc nếu là "Hợp đồng" (chuẩn hoá)
+  const isContract = normalizeContractTypeLabel(form.contractType) === "Hợp đồng";
+
   return (
     <section className="space-y-4 pt-6 border-t border-slate-100">
       <div className="flex items-center gap-3 mb-4">
@@ -18,9 +38,11 @@ const JobContractInfo = ({ form, handleChange }) => {
             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 shadow-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition"
           >
             <option value="">-- Chọn --</option>
-            <option>Hành chính</option>
-            <option>Kỹ thuật</option>
-            <option>Kinh doanh</option>
+            {departments.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -32,8 +54,11 @@ const JobContractInfo = ({ form, handleChange }) => {
             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 shadow-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition"
           >
             <option value="">-- Chọn --</option>
-            <option>Trưởng phòng</option>
-            <option>Nhân viên</option>
+            {positions.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -57,8 +82,11 @@ const JobContractInfo = ({ form, handleChange }) => {
             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-slate-900 shadow-sm focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 outline-none transition"
           >
             <option value="">-- Chọn --</option>
-            <option value="HOP_DONG">Hợp đồng</option>
-            <option value="BIEN_CHE">Biên chế</option>
+            {contractTypes.map((ct) => (
+              <option key={ct} value={ct}>
+                {ct}
+              </option>
+            ))}
           </select>
         </Field>
 
@@ -74,7 +102,8 @@ const JobContractInfo = ({ form, handleChange }) => {
           </Field>
         )}
 
-        {form.contractType === "HOP_DONG" && (
+        {/* ✅ chỉ hiện ngày kết thúc nếu là Hợp đồng */}
+        {isContract && (
           <Field label="Ngày kết thúc">
             <input
               name="contractEnd"

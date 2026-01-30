@@ -1,34 +1,80 @@
+// src/components/EmployeesDetail/EducationInfo.jsx
 import React from "react";
+import Info from "../common/Info"; // sửa path cho đúng
 
-const EducationInfo = ({ employee, isEditing }) => {
-  if (!employee) {
-    return <div>Chưa có thông tin trình độ</div>;
-  }
+const BadgeValue = ({ value, tone = "slate" }) => {
+  if (!value) return <span className="text-slate-500">-</span>;
+
+  const tones = {
+    slate: "bg-slate-100 text-slate-700",
+    emerald: "bg-emerald-50 text-emerald-700",
+    amber: "bg-amber-50 text-amber-700",
+  };
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-      <Header title="Trình độ chuyên môn" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Info label="Trình độ / Bằng cấp" value={isEditing ? <input type="text" value={employee.education} /> : employee.education} />
-        <Info label="Trường đào tạo" value={isEditing ? <input type="text" value={employee.school} /> : employee.school} />
-        <Info label="Năm tốt nghiệp" value={isEditing ? <input type="number" value={employee.graduationYear} /> : employee.graduationYear} />
-      </div>
-    </section>
+    <span
+      className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${tones[tone] || tones.slate
+        }`}
+    >
+      {value}
+    </span>
   );
 };
 
-const Header = ({ title }) => (
-  <div className="flex items-center gap-2 mb-6">
-    <span className="w-1 h-6 bg-teal-600 rounded-full" />
-    <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
-  </div>
-);
+export default function EducationInfo({ employee, qualifications = [] }) {
+  return (
+    <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <span className="w-1 h-6 rounded-full bg-teal-500" />
+        <h3 className="text-lg font-bold text-slate-900">Học vấn</h3>
+      </div>
 
-const Info = ({ label, value }) => (
-  <div className="space-y-1">
-    <p className="text-sm text-slate-500">{label}</p>
-    <p className="font-medium text-slate-900">{value}</p>
-  </div>
-);
+      {/* Trình độ chung */}
 
-export default EducationInfo;
+
+
+      {qualifications.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          Chưa có dữ liệu trường học.
+        </p>
+      ) : (
+        <div className="space-y-6">
+          {qualifications.map((q, index) => (
+            <div
+              key={q.id}
+              className="rounded-xl  p-5"
+            >
+              {/* mỗi bằng cấp là 1 block */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-x-12 gap-y-6">
+                <div className="space-y-1">
+                  <p className="text-sm text-slate-500">Trình độ</p>
+                  <BadgeValue value={q.educationLevel} tone="emerald" />
+                </div>
+
+                <Info label="Bằng cấp" value={q.degree || "-"} />
+                <Info label="Chuyên ngành" value={q.fieldOfStudy || "-"} />
+
+
+
+                <Info label="Trường đại học" value={q.institution || "-"} />
+                <Info
+                  label="Năm tốt nghiệp"
+                  value={q.graduationYear || "-"}
+                />
+
+                <div className="space-y-1">
+                  <p className="text-sm text-slate-500">Ngôn ngữ</p>
+                  <BadgeValue
+                    value={q.foreignLanguageProficiency}
+                    tone="amber"
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

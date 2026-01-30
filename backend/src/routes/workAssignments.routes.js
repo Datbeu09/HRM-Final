@@ -1,15 +1,22 @@
 const express = require("express");
 const router = express.Router();
-const c = require("../controllers/workAssignment.controller");
 
-// ❗ KHÔNG router.use(requireAuth) nếu requireAuth export default function
-// nếu có auth thì:
-// router.use(requireAuth);
+const controller = require("../controllers/workAssignment.controller");
+// const requireAuth = require("../middleware/requireAuth");
 
-router.get("/", c.getAllWorkAssignments);
-router.get("/:id", c.getWorkAssignmentById);
-router.post("/", c.createWorkAssignment);
-router.put("/:id", c.updateWorkAssignment);
-router.delete("/:id", c.deleteWorkAssignment);
+// GET /api/workAssignments
+router.get("/", controller.getAllWorkAssignments);
+
+// GET /api/workAssignments/:id
+router.get("/:id", controller.getWorkAssignmentById);
+
+// POST /api/workAssignments
+router.post("/", controller.createWorkAssignment);
+
+// PUT /api/workAssignments/:id
+router.put("/:id", controller.updateWorkAssignment);
+
+// DELETE /api/workAssignments/:id (soft delete)
+router.delete("/:id", controller.deleteWorkAssignment);
 
 module.exports = router;

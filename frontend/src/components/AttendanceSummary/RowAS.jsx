@@ -1,24 +1,37 @@
 import React from "react";
-export default function RowAS({ name, code, actual, warning }) {
+import { useNavigate } from "react-router-dom";
+
+export default function RowAS({ id, name, code, standard, actual }) {
+  const navigate = useNavigate();
+
+  const handleViewDetail = () => {
+    navigate(`/attendance/${id}`);
+  };
+
   return (
-    <tr className={`border-t ${warning ? "bg-orange-50/40" : "hover:bg-gray-50"}`}>
+    <tr className="border-b last:border-b-0 hover:bg-slate-50 transition">
       <td className="px-6 py-4">
-        <div className="font-bold">{name}</div>
+        <div className="font-medium">{name}</div>
         <div className="text-xs text-gray-500">{code}</div>
       </td>
-      <td className="px-6 py-4 text-center">22</td>
-      <td
-        className={`px-6 py-4 text-center font-bold ${
-          warning ? "text-orange-600" : ""
-        }`}
-      >
-        {actual}
-      </td>
+
+      <td className="px-6 py-4 text-center">{standard}</td>
+
+      <td className="px-6 py-4 text-center font-semibold">{actual}</td>
+
+      {/* ✅ THAO TÁC */}
       <td className="px-6 py-4 text-right">
-        <button className="text-gray-400 hover:text-primary">
-          <span className="material-symbols-outlined text-[20px]">
-            visibility
-          </span>
+        <button
+          onClick={handleViewDetail}
+          className="
+            px-3 py-1.5
+            text-sm font-medium
+            text-teal-600
+            hover:text-teal-700
+            hover:underline
+          "
+        >
+          Chi tiết
         </button>
       </td>
     </tr>

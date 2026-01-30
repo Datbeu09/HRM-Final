@@ -14,7 +14,7 @@ const FIELDS = [
   "gender",
   "address",
   "phone",
-  "email", // vẫn giữ field này vì DB có, nhưng KHÔNG bắt/không sync nữa
+  "email",
   "education",
   "politicalStatus",
   "politicalPartyDate",
@@ -30,7 +30,7 @@ const FIELDS = [
 ];
 
 function genUsernameFromEmployeeCode(employeeCode) {
-  return String(employeeCode || "").trim().toLowerCase(); // NV020 -> nv020
+  return String(employeeCode || "").trim().toLowerCase();
 }
 
 // policyId: tránh FK fail khi client gửi 0
@@ -39,6 +39,11 @@ function normalizePolicyId(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
   return n;
+}
+
+function makeEmployeeCodeFromId(id) {
+  // NV001, NV002... NV1234 => NV1234 (bạn có thể pad 4 số nếu muốn)
+  return `NV${String(id).padStart(3, "0")}`;
 }
 
 module.exports = {
@@ -55,39 +60,40 @@ module.exports = {
     return rows[0] || null;
   },
 
-  // =========================
-  // CREATE (employee + optional account)
-  // =========================
+  // ✅ CREATE (employee + optional account) - employeeCode do backend tự generate
   async create(body, opts = { createAccount: true }) {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
-      // 1) employeeCode unique
-      const [exists] = await conn.query(
-        "SELECT id FROM employees WHERE employeeCode = ? LIMIT 1",
-        [body.employeeCode]
-      );
-      if (exists.length) throw new ApiError(409, "employeeCode already exists");
-
       const now = new Date();
 
-      // 2) build payload
+      // 1) build payload (KHÔNG cần employeeCode từ client)
       const payload = {};
       FIELDS.forEach((f) => {
         if (body[f] !== undefined) payload[f] = body[f];
       });
 
+      // ép policyId chuẩn
       payload.policyId = normalizePolicyId(payload.policyId);
+
+      // nếu client có gửi employeeCode thì vẫn cho (nhưng phải unique)
+      if (payload.employeeCode) {
+        const [exists] = await conn.query(
+          "SELECT id FROM employees WHERE employeeCode = ? LIMIT 1",
+          [payload.employeeCode]
+        );
+        if (exists.length) throw new ApiError(409, "employeeCode already exists");
+      }
 
       payload.createdAt = now;
       payload.updatedAt = now;
 
+      // 2) insert employee
       const columns = Object.keys(payload);
       const values = Object.values(payload);
       const placeholders = columns.map(() => "?").join(",");
 
-      // 3) insert employee
       const [result] = await conn.query(
         `INSERT INTO employees (${columns.join(",")}) VALUES (${placeholders})`,
         values
@@ -95,24 +101,36 @@ module.exports = {
 
       const employeeId = result.insertId;
 
+      // 3) nếu chưa có employeeCode => generate từ id và update lại
+      let employeeCode = payload.employeeCode;
+      if (!employeeCode) {
+        employeeCode = makeEmployeeCodeFromId(employeeId);
+
+        // đảm bảo unique (thực tế sẽ unique vì id unique, nhưng vẫn safe)
+        await conn.query(
+          `UPDATE employees SET employeeCode = ? WHERE id = ?`,
+          [employeeCode, employeeId]
+        );
+      }
+
       // 4) optional create account (username = employeeCode)
       if (opts.createAccount) {
-        const username = genUsernameFromEmployeeCode(body.employeeCode);
+        const username = genUsernameFromEmployeeCode(employeeCode);
         if (!username) throw new ApiError(400, "Cannot generate username from employeeCode");
 
-        // username unique
         const [uRows] = await conn.query(
           "SELECT id FROM accounts WHERE username = ? LIMIT 1",
           [username]
         );
         if (uRows.length) throw new ApiError(409, "Username already exists");
 
-        // password: body.accountPassword > env DEFAULT_PASSWORD > "123456"
         const rawPassword = String(
           body.accountPassword || process.env.DEFAULT_PASSWORD || "123456"
         );
         const hashedPassword = await bcrypt.hash(rawPassword, 12);
 
+        // ⚠️ Nếu DB của bạn đang UNIQUE accounts.name thì sẽ lỗi khi trùng tên.
+        // => Fix tốt nhất: bỏ unique ở accounts.name hoặc đổi unique sang username.
         await conn.query(
           `
           INSERT INTO accounts
@@ -144,105 +162,6 @@ module.exports = {
     }
   },
 
-  // =========================
-  // BULK CREATE (employees[] + optional accounts)
-  // =========================
-  async bulkCreate(employees = [], opts = { defaultCreateAccount: true }) {
-    const conn = await pool.getConnection();
-    try {
-      await conn.beginTransaction();
-
-      const now = new Date();
-      const createdIds = [];
-
-      for (const body of employees) {
-        // employeeCode unique
-        const [exists] = await conn.query(
-          "SELECT id FROM employees WHERE employeeCode = ? LIMIT 1",
-          [body.employeeCode]
-        );
-        if (exists.length)
-          throw new ApiError(409, `employeeCode already exists: ${body.employeeCode}`);
-
-        // build payload
-        const payload = {};
-        if (body.id !== undefined && body.id !== null) payload.id = body.id;
-
-        FIELDS.forEach((f) => {
-          if (body[f] !== undefined) payload[f] = body[f];
-        });
-
-        payload.policyId = normalizePolicyId(payload.policyId);
-
-        payload.createdAt = now;
-        payload.updatedAt = now;
-
-        const columns = Object.keys(payload);
-        const values = Object.values(payload);
-        const placeholders = columns.map(() => "?").join(",");
-
-        const [result] = await conn.query(
-          `INSERT INTO employees (${columns.join(",")}) VALUES (${placeholders})`,
-          values
-        );
-
-        const employeeId = payload.id ?? result.insertId;
-        createdIds.push(employeeId);
-
-        const createAccount =
-          body.createAccount === false ? false : opts.defaultCreateAccount !== false;
-
-        if (createAccount) {
-          const username = genUsernameFromEmployeeCode(body.employeeCode);
-          if (!username) throw new ApiError(400, "Cannot generate username from employeeCode");
-
-          const [uRows] = await conn.query(
-            "SELECT id FROM accounts WHERE username = ? LIMIT 1",
-            [username]
-          );
-          if (uRows.length) throw new ApiError(409, `Username already exists: ${username}`);
-
-          const rawPassword = String(
-            body.accountPassword || process.env.DEFAULT_PASSWORD || "123456"
-          );
-          const hashedPassword = await bcrypt.hash(rawPassword, 12);
-
-          await conn.query(
-            `
-            INSERT INTO accounts
-            (username, password, employeeId, name, role, status, lastLoginAt, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)
-            `,
-            [
-              username,
-              hashedPassword,
-              employeeId,
-              body.name,
-              body.position || "EMPLOYEE",
-              "Hoạt động",
-              now,
-              now,
-            ]
-          );
-        }
-      }
-
-      await conn.commit();
-
-      const [rows] = await pool.query(
-        `SELECT * FROM employees WHERE id IN (${createdIds.map(() => "?").join(",")}) ORDER BY id ASC`,
-        createdIds
-      );
-
-      return { count: createdIds.length, data: rows };
-    } catch (e) {
-      await conn.rollback();
-      throw e;
-    } finally {
-      conn.release();
-    }
-  },
-
   async update(id, body) {
     const current = await this.getById(id);
     if (!current) return null;
@@ -254,6 +173,15 @@ module.exports = {
 
     if (patch.policyId !== undefined) patch.policyId = normalizePolicyId(patch.policyId);
 
+    // ✅ nếu update employeeCode thì check unique
+    if (patch.employeeCode && patch.employeeCode !== current.employeeCode) {
+      const [exists] = await pool.query(
+        "SELECT id FROM employees WHERE employeeCode = ? AND id <> ? LIMIT 1",
+        [patch.employeeCode, id]
+      );
+      if (exists.length) throw new ApiError(409, "employeeCode already exists");
+    }
+
     patch.updatedAt = new Date();
 
     const columns = Object.keys(patch);
@@ -263,29 +191,57 @@ module.exports = {
     const values = [...Object.values(patch), id];
 
     await pool.query(`UPDATE employees SET ${sets} WHERE id = ?`, values);
-
     return this.getById(id);
   },
 
-  // =========================
-  // DELETE (NEW LOGIC: delete account(s) first, then employee) ✅
-  // =========================
+  // src/services/employees.service.js
   async remove(id) {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
 
       // 1) ensure employee exists
-      const [eRows] = await conn.query("SELECT id FROM employees WHERE id = ? LIMIT 1", [id]);
+      const [eRows] = await conn.query(
+        "SELECT id FROM employees WHERE id = ? LIMIT 1",
+        [id]
+      );
       if (!eRows.length) {
         await conn.rollback();
         return false;
       }
 
-      // 2) delete all accounts linked to this employeeId (hard delete)
-      await conn.query("DELETE FROM accounts WHERE employeeId = ?", [id]);
+      // 2) find ALL child tables referencing employees(id)
+      const [fkRows] = await conn.query(
+        `
+      SELECT
+        kcu.TABLE_NAME as tableName,
+        kcu.COLUMN_NAME as columnName,
+        kcu.CONSTRAINT_NAME as constraintName
+      FROM information_schema.KEY_COLUMN_USAGE kcu
+      WHERE kcu.REFERENCED_TABLE_SCHEMA = DATABASE()
+        AND kcu.REFERENCED_TABLE_NAME = 'employees'
+        AND kcu.REFERENCED_COLUMN_NAME = 'id'
+      `,
+        []
+      );
 
-      // 3) delete employee
+      // 3) delete children first (avoid FK block)
+      //    IMPORTANT: delete from child tables BEFORE employees
+      for (const r of fkRows) {
+        const table = String(r.tableName || "");
+        const col = String(r.columnName || "");
+
+        // safety: only allow simple identifiers
+        if (!/^[a-zA-Z0-9_]+$/.test(table) || !/^[a-zA-Z0-9_]+$/.test(col)) continue;
+
+        // Do NOT delete employees here
+        if (table === "employees") continue;
+
+        // Delete rows referencing this employee
+        await conn.query(`DELETE FROM \`${table}\` WHERE \`${col}\` = ?`, [id]);
+      }
+
+      // 4) delete employee
       const [result] = await conn.query("DELETE FROM employees WHERE id = ?", [id]);
 
       await conn.commit();
@@ -296,5 +252,6 @@ module.exports = {
     } finally {
       conn.release();
     }
-  },
+  }
+
 };

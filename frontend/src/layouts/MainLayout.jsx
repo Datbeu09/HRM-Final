@@ -28,8 +28,8 @@ const pageTitles = {
   // ===== ACCOUNTANT =====
   "/finance": "Tổng quan tài chính",
   "/attendance-summary": "Tổng hợp chấm công",
-  "/payroll-approval": "Duyệt bảng lương",
-  "/payroll/:id": "Chi tiết bảng lương",
+  "/Finance-approval": "Duyệt bảng lương",
+  "/Finance/:id": "Chi tiết bảng lương",
   "/salary/:id": "Chi tiết lương",
   "/tax-deduction": "Thuế & Khấu trừ",
 

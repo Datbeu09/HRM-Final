@@ -1,20 +1,17 @@
 const ApiError = require("../utils/ApiError");
 const accountsService = require("../services/accounts.service");
-const { getPermissionsByRole } = require("../services/auth.service"); // Lấy quyền theo role
+const { getPermissionsByRole } = require("../services/auth.service");
 const { signToken } = require("../utils/jwt");
 
 module.exports = {
-
   // Đăng nhập và trả về token
   async login(req, res, next) {
-
     try {
-      const { username, password } = req.body || {}; // Lấy dữ liệu từ body request
-      if (!username || !password) throw new ApiError(400, "Username and password are required");
-      console.log("Node:", process.version);
-      console.log("accountsService path:", require.resolve("../services/accounts.service"));
-      console.log("accountsService keys:", Object.keys(accountsService));
-      console.log("typeof verifyLogin:", typeof accountsService.verifyLogin);
+      const { username, password } = req.body || {};
+
+      if (!username || !password) {
+        throw new ApiError(400, "MISSING_CREDENTIALS");
+      }
 
       // Kiểm tra thông tin đăng nhập qua service
       const acc = await accountsService.verifyLogin({ username, password });
@@ -32,7 +29,7 @@ module.exports = {
       });
 
       // Trả về token và thông tin người dùng
-      res.json({
+      return res.json({
         success: true,
         data: {
           token,
@@ -46,8 +43,7 @@ module.exports = {
         },
       });
     } catch (e) {
-
-      next(e); // Xử lý lỗi
+      return next(e);
     }
   },
 };

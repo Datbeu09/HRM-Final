@@ -1,71 +1,48 @@
-// src/controllers/dailyAttendance.controller.js
-const service = require("../services/dailyAttendance.service");
 const ApiError = require("../utils/ApiError");
+const service = require("../services/dailyAttendance.service");
 
 module.exports = {
-  // ===== GET ALL =====
-  async getAll(req, res, next) {
+  async getByEmployeeMonth(req, res, next) {
     try {
-      const data = await service.getAll();
-      res.json({ success: true, data });
-    } catch (e) {
-      next(e);
-    }
-  },
+      const { employeeId, month, year } = req.query;
+      if (!employeeId || !month || !year) throw new ApiError(400, "employeeId, month, year are required");
 
-  // ===== GET BY ID =====
-  async getById(req, res, next) {
-    try {
-      const row = await service.getById(req.params.id);
-      if (!row) throw new ApiError(404, "Daily attendance not found");
-      res.json({ success: true, data: row });
-    } catch (e) {
-      next(e);
-    }
-  },
+      const rows = await service.getByEmployeeMonth({
+        employeeId: Number(employeeId),
+        month: Number(month),
+        year: Number(year),
+      });
 
-  // ===== GET BY EMPLOYEE + DATE =====
-  async getByEmployeeAndDate(req, res, next) {
-    try {
-      const { employeeId, date } = req.params;
-      const rows = await service.getByEmployeeAndDate(employeeId, date);
       res.json({ success: true, data: rows });
     } catch (e) {
       next(e);
     }
   },
 
-  // ===== CREATE =====
-  async create(req, res, next) {
+  async upsert(req, res, next) {
     try {
-      const insertId = await service.create(req.body);
-      res.status(201).json({
-        success: true,
-        message: "Daily attendance created",
-        id: insertId,
+      const {
+        employeeId,
+        date,
+        status,
+        hoursWorked,
+        overtimeHours,
+        notes,
+      } = req.body;
+
+      if (!employeeId || !date) throw new ApiError(400, "employeeId and date are required");
+
+      const row = await service.upsert({
+        employeeId: Number(employeeId),
+        date: String(date).slice(0, 10), // YYYY-MM-DD
+        status: status || "PRESENT",
+        hoursWorked: Number(hoursWorked || 0),
+        overtimeHours: Number(overtimeHours || 0),
+        notes: notes || "",
+        accountId: req.user?.id || null,
       });
-    } catch (e) {
-      next(e);
-    }
-  },
 
-  // ===== UPDATE =====
-  async update(req, res, next) {
-    try {
-      const ok = await service.update(req.params.id, req.body);
-      if (!ok) throw new ApiError(404, "Daily attendance not found");
-      res.json({ success: true, message: "Daily attendance updated" });
-    } catch (e) {
-      next(e);
-    }
-  },
-
-  // ===== DELETE =====
-  async remove(req, res, next) {
-    try {
-      const ok = await service.remove(req.params.id);
-      if (!ok) throw new ApiError(404, "Daily attendance not found");
-      res.json({ success: true, message: "Daily attendance deleted" });
+      res.json({ success: true, data: row });
     } catch (e) {
       next(e);
     }

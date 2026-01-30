@@ -1,13 +1,14 @@
 const express = require("express");
 const router = express.Router();
 
-const c = require("../controllers/workAssignmentResponse.controller");
+const controller = require("../controllers/workAssignmentResponse.controller");
 
-// CRUD
-router.get("/", c.list);          // GET    /api/work-assignment-responses
-router.get("/:id", c.getById);    // GET    /api/work-assignment-responses/:id
-router.post("/", c.create);       // POST   /api/work-assignment-responses
-router.put("/:id", c.update);     // PUT    /api/work-assignment-responses/:id
-router.delete("/:id", c.remove);  // DELETE /api/work-assignment-responses/:id
+// GET /api/work-assignment-responses
+// ?workAssignmentId=1
+// ?employeeId=2
+router.get("/", controller.list);
+
+// POST /api/work-assignment-responses
+router.post("/", controller.create);
 
 module.exports = router;

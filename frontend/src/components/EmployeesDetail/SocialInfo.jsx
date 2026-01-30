@@ -10,10 +10,10 @@ const SocialInfo = ({ employee, isEditing }) => {
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
       <Header title="Thông tin chính trị - xã hội" />
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Info label="Đảng viên" value={isEditing ? <input type="text" value={employee.politicalStatus} /> : employee.politicalStatus} />
-        <Info label="Ngày vào Đảng" value={isEditing ? <input type="date" value={employee.politicalPartyDate || ""} /> : <FormatDate dateString={employee.politicalPartyDate} />} />
-        <Info label="Đoàn viên" value={isEditing ? <input type="text" value={employee.youthUnionMember ? "Có" : "Không"} /> : (employee.youthUnionMember ? "Có" : "Không")} />
-        <Info label="Ngày vào Đoàn" value={isEditing ? <input type="date" value={employee.youthUnionDate || ""} /> : <FormatDate dateString={employee.youthUnionDate} />} />
+        {/* <Info label="Đảng viên" value={isEditing ? <input type="text" value={employee.politicalStatus} /> : employee.politicalStatus} />
+        <Info label="Ngày vào Đảng" value={isEditing ? <input type="date" value={employee.politicalPartyDate || ""} /> : <FormatDate dateString={employee.politicalPartyDate} />} /> */}
+        <Info label="Đảng viên" value={isEditing ? <input type="text" value={employee.youthUnionMember ? "Có" : "Không"} /> : (employee.youthUnionMember ? "Có" : "Không")} />
+        <Info label="Ngày vào Đảng" value={isEditing ? <input type="date" value={employee.youthUnionDate || ""} /> : <FormatDate dateString={employee.youthUnionDate} />} />
         <Info label="Diện chính sách" value={isEditing ? <input type="text" value={employee.policyStatus} /> : employee.policyStatus} />
       </div>
     </section>

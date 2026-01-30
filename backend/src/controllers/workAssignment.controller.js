@@ -3,12 +3,12 @@ const service = require("../services/workAssignments.service");
 
 function validateCreate(body) {
   if (!body.employeeId) throw new ApiError(400, "employeeId is required");
-  if (!body.taskName) throw new ApiError(400, "taskName is required");
   if (!body.assignedDate) throw new ApiError(400, "assignedDate is required");
+  if (!body.taskId && !body.taskName) throw new ApiError(400, "taskId or taskName is required");
 }
 
 module.exports = {
-  // GET /work-assignments
+  // GET /workAssignments
   async getAllWorkAssignments(req, res, next) {
     try {
       const data = await service.getAll(req.query);
@@ -18,7 +18,7 @@ module.exports = {
     }
   },
 
-  // GET /work-assignments/:id
+  // GET /workAssignments/:id
   async getWorkAssignmentById(req, res, next) {
     try {
       const row = await service.getById(req.params.id);
@@ -29,21 +29,37 @@ module.exports = {
     }
   },
 
-  // POST /work-assignments
+  // POST /workAssignments
   async createWorkAssignment(req, res, next) {
     try {
       validateCreate(req.body);
-      const created = await service.create(req.body);
+
+      // ưu tiên lấy từ token nếu có (admin tạo assignment)
+      const assignedByAccountId =
+        req.body.assignedByAccountId ?? req.user?.id ?? null;
+
+      const created = await service.create({
+        ...req.body,
+        assignedByAccountId,
+      });
+
       res.status(201).json({ success: true, data: created });
     } catch (e) {
       next(e);
     }
   },
 
-  // PUT /work-assignments/:id
+  // PUT /workAssignments/:id
   async updateWorkAssignment(req, res, next) {
     try {
-      const updated = await service.update(req.params.id, req.body);
+      const assignedByAccountId =
+        req.body.assignedByAccountId ?? req.user?.id ?? undefined;
+
+      const updated = await service.update(req.params.id, {
+        ...req.body,
+        ...(assignedByAccountId !== undefined ? { assignedByAccountId } : {}),
+      });
+
       if (!updated) throw new ApiError(404, "WorkAssignment not found");
       res.json({ success: true, data: updated });
     } catch (e) {
@@ -51,7 +67,7 @@ module.exports = {
     }
   },
 
-  // DELETE /work-assignments/:id
+  // DELETE /workAssignments/:id
   async deleteWorkAssignment(req, res, next) {
     try {
       const ok = await service.remove(req.params.id);

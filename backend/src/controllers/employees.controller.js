@@ -6,7 +6,6 @@ const service = require("../services/employees.service");
 const isDateLike = (v) => !v || !Number.isNaN(Date.parse(v));
 
 function validateCreate(body) {
-  if (!body.employeeCode) throw new ApiError(400, "employeeCode is required");
   if (!body.name) throw new ApiError(400, "name is required");
 
   ["dob", "politicalPartyDate", "youthUnionDate", "startDate", "endDate"].forEach((k) => {
@@ -17,6 +16,7 @@ function validateCreate(body) {
     throw new ApiError(400, "familyInfo must be >= 0");
   }
 }
+
 
 // ================= LIST =================
 exports.listEmployees = async (req, res, next) => {

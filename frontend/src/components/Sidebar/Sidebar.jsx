@@ -114,24 +114,24 @@ export default function Sidebar() {
         label: "Tổng quan tài chính",
         permissionCode: "FINANCE_OVERVIEW",
       },
-      {
-        path: "/salary",
-        icon: "receipt_long",
-        label: "Chi tiết lương",
-        permissionCode: "SALARY_VIEW",
-      },
+      // {
+      //   path: "/salary",
+      //   icon: "receipt_long",
+      //   label: "Chi tiết lương",
+      //   permissionCode: "SALARY_VIEW",
+      // },
       {
         path: "/payroll-approval",
         icon: "payments",
         label: "Duyệt bảng lương",
         permissionCode: "SALARY_APPROVE",
       },
-      {
-        path: "/tax-deduction",
-        icon: "request_quote",
-        label: "Thuế khấu trừ",
-        permissionCode: "TAX_DEDUCTION",
-      },
+      // {
+      //   path: "/tax-deduction",
+      //   icon: "request_quote",
+      //   label: "Thuế khấu trừ",
+      //   permissionCode: "TAX_DEDUCTION",
+      // },
 
       // Benefits / Insurance
       {

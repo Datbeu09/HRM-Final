@@ -66,17 +66,23 @@ async function doLogin(username, password) {
   const acc = rows?.[0];
   dlog("acc found?", !!acc, acc ? safeUser(acc) : null);
 
-  if (!acc) throw new ApiError(401, "Invalid credentials");
+  // ✅ phân biệt sai username
+  if (!acc) throw new ApiError(401, "INVALID_USERNAME");
 
   // 2) Status check
   const active = isActive(acc.status);
   dlog("status =", acc.status, "=> isActive =", active);
-  if (!active) throw new ApiError(403, "Account is inactive");
+
+  // ✅ account inactive
+  if (!active) throw new ApiError(403, "ACCOUNT_INACTIVE");
 
   // 3) Compare password
   const ok = await bcrypt.compare(password, acc.password);
   dlog("bcrypt.compare result =", ok);
-  if (!ok) throw new ApiError(401, "Invalid credentials");
+
+  // ✅ phân biệt sai password
+  if (!ok) throw new ApiError(401, "INVALID_PASSWORD");
+
 
   // 4) Load permissions
   const permissions = await loadPermissionsByRole(acc.role);

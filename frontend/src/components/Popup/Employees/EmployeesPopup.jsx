@@ -1,55 +1,78 @@
 // src/components/Popup/Employees/EmployeesPopup.jsx
-import React, { useEffect, useMemo, useState } from "react";
-import { getEmployeeById, addEmployee, updateEmployee } from "../../../api/employees.api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getEmployeeById,
+  addEmployee,
+  updateEmployee,
+  getEmployees,
+} from "../../../api/employees.api";
+
+import {
+  getProfessionalQualifications,
+  createProfessionalQualification,
+  updateProfessionalQualification,
+} from "../../../api/professionalQualifications.api";
+
 import PersonalInfo from "./PersonalInfo";
 import JobContractInfo from "./JobContractInfo";
 import OtherInfo from "./OtherInfo";
 
-// ---- date normalize: "dd/mm/yyyy" -> "yyyy-mm-dd"
+// ================= DATE HELPERS (FIX DOB -1 day) =================
+// YYYY-MM-DD -> keep string (no Date() parse)
+const isYmd = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || "").trim());
+
+// dd/mm/yyyy -> yyyy-mm-dd
 const normalizeDate = (v) => {
   if (!v) return null;
+  const s = String(v).trim();
+  if (isYmd(s)) return s;
 
-  // already YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-
-  // dd/mm/yyyy -> yyyy-mm-dd
-  const m = String(v).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (m) {
     const [, dd, mm, yyyy] = m;
     return `${yyyy}-${mm}-${dd}`;
   }
-
-  // ISO / other strings: keep (backend Date.parse may accept)
-  return v;
+  return s;
 };
 
+// Convert API date/datetime -> input[type=date] value (YYYY-MM-DD)
+// - If already YYYY-MM-DD => use directly (NO timezone shift)
+// - If ISO datetime => parse and take LOCAL date parts
 const toDateInput = (v) => {
   if (!v) return "";
-  try {
-    return new Date(v).toISOString().split("T")[0];
-  } catch {
-    return "";
+  const s = String(v).trim();
+
+  if (isYmd(s)) return s;
+
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return "";
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
   }
+
+  // fallback: try extract YYYY-MM-DD prefix
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+
+  return "";
 };
 
-// FE (HOP_DONG/BIEN_CHE) -> BE (CONTRACT/PERMANENT)
-const mapContractTypeToBackend = (v) => {
-  if (v === "HOP_DONG") return "Hợp đồng";
-  if (v === "BIEN_CHE") return "Biên chế";
-  return v || "";
+// ================= CONTRACT TYPE =================
+const normalizeContractTypeLabel = (v) => {
+  const s = String(v || "").trim().toLowerCase();
+  if (!s) return "";
+  if (s === "hop_dong" || s.includes("hợp đồng")) return "Hợp đồng";
+  if (s === "bien_che" || s.includes("biên chế")) return "Biên chế";
+  return String(v || "").trim();
 };
 
-const mapContractTypeFromBackend = (v) => {
-  if (v === "Hợp đồng") return "HOP_DONG";
-  if (v === "Biên chế") return "BIEN_CHE";
-  return v || "";
-};  
-
-// FE đang dùng MALE/FEMALE/OTHER thì gửi thẳng
 const mapGenderToBackend = (v) => v || "";
 const mapGenderFromBackend = (v) => v || "";
 
-// ✅ Auto-generate employeeCode: NV### tăng dần
+// ================= EMPLOYEE CODE (frontend auto fill only) =================
 const generateNextEmployeeCode = (employees = []) => {
   const nums = (employees || [])
     .map((e) => e?.employeeCode)
@@ -62,13 +85,13 @@ const generateNextEmployeeCode = (employees = []) => {
   return `NV${next}`;
 };
 
-// ✅ build payload đúng field backend service (FIELDS)
+// ================= SERIALIZE EMPLOYEE =================
 const serializeEmployeeToApi = (form) => {
+  const contractType = normalizeContractTypeLabel(form.contractType);
+
   const payload = {
     employeeCode: (form.employeeCode || "").trim(),
     name: (form.name || "").trim(),
-
-    // đúng fields backend
     title: form.title || "",
     position: form.jobTitle || "",
     department: form.department || "",
@@ -80,9 +103,6 @@ const serializeEmployeeToApi = (form) => {
     address: form.address || "",
     phone: form.phone || "",
 
-    // ❌ không gửi email (backend tự sync)
-    // email: undefined,
-
     education: form.education || "",
 
     politicalStatus: form.politicalStatus || "",
@@ -92,25 +112,74 @@ const serializeEmployeeToApi = (form) => {
     youthUnionDate: normalizeDate(form.partyJoinDate),
 
     policyStatus: form.policyStatus || "",
-    contractType: mapContractTypeToBackend(form.contractType),
+    contractType,
 
     startDate: normalizeDate(form.contractStart),
-    endDate: normalizeDate(form.contractEnd),
+
+    // ✅ chỉ gửi endDate nếu Hợp đồng, còn lại null
+    endDate: contractType === "Hợp đồng" ? normalizeDate(form.contractEnd) : null,
 
     workStatus: form.workStatus || "",
 
-    // ✅ bạn yêu cầu luôn = 0
     familyInfo: 0,
-
-    // policyId: để null hoặc số > 0 (backend đã normalize)
     policyId: form.policyId ?? null,
+
+    // ✅ quan trọng: nếu backend tạo account mặc định, FE không cần gửi createAccount
+    // createAccount: false, // nếu muốn tắt tạo account tự động thì bật dòng này
   };
 
-  // IMPORTANT: đảm bảo không lỡ gửi email
+  // không gửi email (vì backend bạn không sync nữa)
   if ("email" in payload) delete payload.email;
 
-  console.log("[EmployeesPopup] payload submit =", payload);
   return payload;
+};
+
+// ================= SERIALIZE PQ (FIX degree required) =================
+// Backend validateCreate bắt buộc: degree, fieldOfStudy, educationLevel, institution, graduationYear
+const serializePQToApi = (form, employeeId) => {
+  const degree = (form.degree || "").trim();
+  const educationLevel = (form.educationLevel || "").trim();
+  const fieldOfStudy = (form.fieldOfStudy || "").trim();
+  const institution = (form.institution || "").trim();
+  const graduationYear = String(form.graduationYear || "").trim();
+  const foreignLanguageProficiency = (form.foreignLanguageProficiency || "").trim();
+
+  // ✅ Nếu user chưa nhập gì ở phần học vấn => không tạo PQ
+  const userTouched =
+    degree ||
+    educationLevel ||
+    fieldOfStudy ||
+    institution ||
+    graduationYear ||
+    foreignLanguageProficiency;
+
+  if (!userTouched) return null;
+
+  // ✅ FIX: user chỉ chọn "Trình độ" (educationLevel) nhưng không có "degree"
+  // => lấy educationLevel làm degree để pass validate
+  const finalDegree = degree || educationLevel;
+
+  // ✅ Nếu user có nhập nhưng thiếu field bắt buộc => return special object để báo lỗi UI
+  const missing = [];
+  if (!finalDegree) missing.push("Bằng cấp/Trình độ (degree)");
+  if (!fieldOfStudy) missing.push("Chuyên ngành (fieldOfStudy)");
+  if (!educationLevel) missing.push("Trình độ (educationLevel)");
+  if (!institution) missing.push("Trường (institution)");
+  if (!graduationYear) missing.push("Năm tốt nghiệp (graduationYear)");
+
+  if (missing.length) {
+    return { __invalid: true, __missing: missing };
+  }
+
+  return {
+    employeeId,
+    degree: finalDegree, // ✅ đảm bảo không rỗng
+    fieldOfStudy,
+    educationLevel,
+    institution,
+    graduationYear: Number(graduationYear),
+    foreignLanguageProficiency: foreignLanguageProficiency || null,
+  };
 };
 
 const normalizeEmployeeFromApi = (apiData, initialForm) => ({
@@ -126,13 +195,13 @@ const normalizeEmployeeFromApi = (apiData, initialForm) => ({
   status: apiData?.status ?? "",
 
   workStatus: apiData?.workStatus ?? "Đang làm việc",
-  contractType: mapContractTypeFromBackend(apiData?.contractType ?? ""),
+  contractType: normalizeContractTypeLabel(apiData?.contractType ?? ""),
 
-  dob: toDateInput(apiData?.dob),
+  dob: toDateInput(apiData?.dob), // ✅ FIX -1 day
   gender: mapGenderFromBackend(apiData?.gender ?? ""),
 
   phone: apiData?.phone ?? "",
-  email: apiData?.email ?? "", // chỉ để hiển thị (backend sync)
+  email: apiData?.email ?? "",
   address: apiData?.address ?? "",
   education: apiData?.education ?? "",
 
@@ -151,12 +220,28 @@ const normalizeEmployeeFromApi = (apiData, initialForm) => ({
   familyInfo: apiData?.familyInfo ?? 0,
 });
 
+const normalizePQToForm = (pq = {}, baseForm) => ({
+  ...baseForm,
+  pqId: pq?.id ?? "",
+  // ✅ map lại: degree/educationLevel về form
+  degree: pq?.degree ?? "",
+  fieldOfStudy: pq?.fieldOfStudy ?? "",
+  educationLevel: pq?.educationLevel ?? "",
+  institution: pq?.institution ?? "",
+  graduationYear: pq?.graduationYear ?? "",
+  foreignLanguageProficiency: pq?.foreignLanguageProficiency ?? "",
+  pqCreatedAt: pq?.createdAt ?? pq?.created_at ?? null,
+  pqUpdatedAt: pq?.updatedAt ?? pq?.updated_at ?? null,
+});
+
 export default function EmployeesPopup({
   onClose,
   employeeId,
   onSaved,
-  employees = [], // ✅ truyền từ Employees.jsx
+  employees: employeesProp = [],
 }) {
+  const isEdit = !!employeeId;
+
   const initialForm = useMemo(
     () => ({
       id: "",
@@ -169,7 +254,7 @@ export default function EmployeesPopup({
       dob: "",
       gender: "",
       phone: "",
-      email: "", // chỉ hiển thị thôi (không gửi)
+      email: "",
       address: "",
 
       department: "",
@@ -190,55 +275,126 @@ export default function EmployeesPopup({
       policyId: null,
 
       familyInfo: 0,
+
+      // ✅ PQ fields
+      pqId: "",
+      degree: "",
+      fieldOfStudy: "",
+      educationLevel: "",
+      institution: "",
+      graduationYear: "",
+      foreignLanguageProficiency: "",
+      pqCreatedAt: null,
+      pqUpdatedAt: null,
     }),
     []
   );
 
   const [form, setForm] = useState(initialForm);
-  const [loading, setLoading] = useState(false);
+
+  // mượt: tách loading
+  const [loadingInit, setLoadingInit] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // ✅ Auto-fill employeeCode khi ADD (không phải EDIT)
-  useEffect(() => {
-    if (!employeeId) {
-      const nextCode = generateNextEmployeeCode(employees);
-      setForm((prev) => ({
-        ...prev,
-        employeeCode: prev.employeeCode?.trim() ? prev.employeeCode : nextCode,
-        familyInfo: 0,
-      }));
-    }
-  }, [employeeId, employees]);
+  // options
+  const [employeesForOptions, setEmployeesForOptions] = useState(employeesProp);
+  const hasFetchedOptionsRef = useRef(false);
 
-  // ✅ Load data khi EDIT
+  useEffect(() => {
+    if (employeesProp?.length) setEmployeesForOptions(employeesProp);
+  }, [employeesProp]);
+
   useEffect(() => {
     const run = async () => {
-      if (!employeeId) {
-        // Add mode -> reset nhưng vẫn giữ employeeCode auto
+      if (employeesProp?.length) return;
+      if (hasFetchedOptionsRef.current) return;
+      hasFetchedOptionsRef.current = true;
+
+      try {
+        const list = await getEmployees();
+        setEmployeesForOptions(Array.isArray(list) ? list : []);
+      } catch (e) {
+        console.error("[EmployeesPopup] getEmployees options error:", e?.response?.data || e);
+        setEmployeesForOptions([]);
+      }
+    };
+    run();
+  }, [employeesProp]);
+
+  const options = useMemo(() => {
+    const uniq = (arr) =>
+      Array.from(new Set((arr || []).map((x) => String(x || "").trim()).filter(Boolean)));
+
+    const rawDepartments = uniq(employeesForOptions.map((e) => e?.department));
+    const rawPositions = uniq(employeesForOptions.map((e) => e?.position));
+    const rawContractTypes = uniq(employeesForOptions.map((e) => e?.contractType)).map(
+      normalizeContractTypeLabel
+    );
+
+    return {
+      departments: uniq(rawDepartments),
+      positions: uniq(rawPositions),
+      contractTypes: uniq(rawContractTypes),
+    };
+  }, [employeesForOptions]);
+
+  // Auto-fill employeeCode when ADD
+  useEffect(() => {
+    if (isEdit) return;
+    setForm((prev) => {
+      const code = prev.employeeCode?.trim()
+        ? prev.employeeCode
+        : generateNextEmployeeCode(employeesForOptions);
+      return { ...prev, employeeCode: code, familyInfo: 0 };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEdit, employeesForOptions]);
+
+  // Change contract type => clear end date if not contract
+  useEffect(() => {
+    const ct = normalizeContractTypeLabel(form.contractType);
+    if (ct && ct !== "Hợp đồng" && form.contractEnd) {
+      setForm((prev) => ({ ...prev, contractEnd: "" }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.contractType]);
+
+  // Load edit data (DO NOT depend on employeesForOptions)
+  useEffect(() => {
+    const run = async () => {
+      if (!isEdit) {
         setForm((prev) => ({
           ...initialForm,
-          employeeCode: prev.employeeCode || generateNextEmployeeCode(employees),
+          employeeCode: prev.employeeCode || generateNextEmployeeCode(employeesForOptions),
           familyInfo: 0,
         }));
         return;
       }
 
-      setLoading(true);
+      setLoadingInit(true);
       setError("");
       try {
-        const apiData = await getEmployeeById(employeeId);
-        setForm(normalizeEmployeeFromApi(apiData, initialForm));
+        const [emp, pqList] = await Promise.all([
+          getEmployeeById(employeeId),
+          getProfessionalQualifications({ employeeId }).catch(() => []),
+        ]);
+
+        const base = normalizeEmployeeFromApi(emp, initialForm);
+        const pq = Array.isArray(pqList) && pqList.length ? pqList[0] : null;
+
+        setForm(pq ? normalizePQToForm(pq, base) : base);
       } catch (e) {
-        console.error("[EmployeesPopup] getEmployeeById error:", e?.response?.data || e);
+        console.error("[EmployeesPopup] load edit error:", e?.response?.data || e);
         setError(e?.response?.data?.message || "Không tải được dữ liệu nhân viên.");
       } finally {
-        setLoading(false);
+        setLoadingInit(false);
       }
     };
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employeeId, initialForm]);
+  }, [isEdit, employeeId, initialForm]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -249,8 +405,7 @@ export default function EmployeesPopup({
     setError("");
     setForm((prev) => ({
       ...initialForm,
-      // giữ mã auto khi cancel add
-      employeeCode: employeeId ? "" : prev.employeeCode || generateNextEmployeeCode(employees),
+      employeeCode: isEdit ? "" : prev.employeeCode || generateNextEmployeeCode(employeesForOptions),
       familyInfo: 0,
     }));
     onClose?.();
@@ -263,35 +418,53 @@ export default function EmployeesPopup({
     if (!form.employeeCode?.trim()) return setError("Vui lòng nhập Mã nhân viên.");
     if (!form.name?.trim()) return setError("Vui lòng nhập Họ tên.");
 
-    setLoading(true);
+    setSaving(true);
     try {
-      const payload = serializeEmployeeToApi(form);
+      // 1) upsert employee
+      const empPayload = serializeEmployeeToApi(form);
 
-      if (employeeId) {
-        await updateEmployee(employeeId, payload);
+      let savedEmp;
+      if (isEdit) {
+        savedEmp = await updateEmployee(employeeId, empPayload);
       } else {
-        await addEmployee(payload);
+        savedEmp = await addEmployee(empPayload);
+      }
+
+      const savedEmployeeId = savedEmp?.id || employeeId;
+
+      // 2) upsert PQ (only if user touched + valid)
+      const pqPayload = serializePQToApi(form, savedEmployeeId);
+
+      if (pqPayload?.__invalid) {
+        setError(`Học vấn thiếu: ${pqPayload.__missing.join(", ")}`);
+        return;
+      }
+
+      if (pqPayload) {
+        if (form.pqId) {
+          await updateProfessionalQualification(form.pqId, pqPayload);
+        } else {
+          await createProfessionalQualification(pqPayload);
+        }
       }
 
       onSaved?.();
-    } catch (e) {
-      const status = e?.response?.status;
-      const data = e?.response?.data;
+    } catch (e2) {
+      console.error("[EmployeesPopup] submit error:", e2?.response?.data || e2);
 
-      console.error("[EmployeesPopup] submit status:", status);
-      console.error("[EmployeesPopup] submit data:", data);
-
-      const msg =
-        data?.message ||
-        data?.error ||
-        (status === 403 ? "Bạn không có quyền employees:create/update." : "") ||
-        "Something went wrong";
-
-      setError(msg);
+      // show friendly messages
+      const msg = e2?.response?.data?.message || e2?.message || "Something went wrong";
+      if (String(msg).includes("employeeCode already exists")) {
+        setError("Mã nhân viên đã tồn tại. Hãy thử lại (hoặc refresh danh sách).");
+      } else {
+        setError(msg);
+      }
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  const disabledAll = loadingInit || saving;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-6 sm:px-8">
@@ -299,14 +472,26 @@ export default function EmployeesPopup({
 
       <div className="relative w-full max-w-5xl p-8 bg-white rounded-2xl shadow-lg overflow-auto max-h-[90vh]">
         <h2 className="text-xl font-semibold text-center mb-6">
-          {employeeId ? "Chỉnh sửa nhân viên" : "Thêm nhân viên mới"}
+          {isEdit ? "Chỉnh sửa nhân viên" : "Thêm nhân viên mới"}
         </h2>
 
+        {(loadingInit || saving) && (
+          <div className="mb-4 text-sm text-slate-500 text-center">
+            {loadingInit ? "Đang tải dữ liệu..." : "Đang lưu..."}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
-          {/* PersonalInfo: nếu bạn muốn khóa mã nhân viên khi edit thì xử lý ở component */}
-          <PersonalInfo form={form} handleChange={handleChange} isEdit={!!employeeId} />
-          <JobContractInfo form={form} handleChange={handleChange} />
-          <OtherInfo form={form} handleChange={handleChange} />
+          <fieldset disabled={disabledAll} className="disabled:opacity-80">
+            <PersonalInfo form={form} handleChange={handleChange} isEdit={isEdit} />
+            <JobContractInfo
+              form={form}
+              handleChange={handleChange}
+              isEdit={isEdit}
+              options={options}
+            />
+            <OtherInfo form={form} handleChange={handleChange} isEdit={isEdit} options={options} />
+          </fieldset>
 
           {error && <div className="text-red-500 text-sm mt-3">{error}</div>}
 
@@ -321,10 +506,10 @@ export default function EmployeesPopup({
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={disabledAll}
               className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300"
             >
-              {loading ? "Đang lưu..." : "Lưu"}
+              {saving ? "Đang lưu..." : "Lưu"}
             </button>
           </div>
         </form>

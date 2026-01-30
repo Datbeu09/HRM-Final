@@ -101,7 +101,7 @@ const FilterBar = ({ onSearch, onReset }) => {
             className="w-full rounded-xl border border-gray-300 px-4 py-2.5 bg-white focus:border-primary focus:ring-2 focus:ring-primary/30 outline-none transition"
           >
             <option value="Tất cả loại HĐ">Tất cả loại HĐ</option>
-            <option value="HĐLĐ">HĐLĐ</option>
+            <option value="Hợp đồng">Hợp đồng</option>
             <option value="Biên chế">Biên chế</option>
           </select>
         </div>

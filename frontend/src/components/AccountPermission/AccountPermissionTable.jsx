@@ -18,7 +18,7 @@ export default function AccountPermissionTable({ users, onEdit, onDelete }) {
           {users.map((user) => (
             <tr key={user.id} className="h-[52px] border-t hover:bg-gray-50">
               <td className="px-4 font-medium">{user.username}</td>
-              <td className="px-4 hidden md:table-cell">{user.employeeId}</td>
+              <td className="px-4 hidden md:table-cell">{user.username}</td>
               <td className="px-4">{user.role}</td>
               <td
                 className={`px-4 font-semibold ${
