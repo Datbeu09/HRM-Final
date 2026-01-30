@@ -1,88 +1,149 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getAllTasks } from "../../api/tasks.api";
 import TaskStats from "../../components/Assignment/User/TaskStats";
 import TaskList from "../../components/Assignment/User/TaskList";
 
+import { getMyWorkAssignments, updateMyWorkAssignmentStatus } from "../../api/workAssignments.api";
+import { getMyWorkAssignmentResponses, createMyWorkAssignmentResponse } from "../../api/workAssignmentResponses.api";
 
-// ===== localStorage keys (FE status) =====
-const LS_INPROGRESS = "tasks_inprogress_ids";
-const LS_DONE = "tasks_done_ids";
+// map status hiển thị cho UI
+const mapUiStatus = ({ waStatus, responseStatus }) => {
+  const r = String(responseStatus || "").toUpperCase();
+  const w = String(waStatus || "").toUpperCase();
 
-const readIds = (key) => {
-  try {
-    const raw = JSON.parse(localStorage.getItem(key) || "[]");
-    return Array.isArray(raw) ? raw.map(Number).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-};
+  // Nếu nhân viên từ chối
+  if (r === "REJECTED") return "rejected";
 
-const writeIds = (key, ids) => {
-  localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids.map(Number)))));
+  // Nếu đã hoàn thành
+  if (w === "DONE" || w === "COMPLETED") return "done";
+
+  // Nếu đã tiếp nhận => đang làm
+  if (r === "ACCEPTED" || w === "IN_PROGRESS" || w === "DOING") return "inprogress";
+
+  // mặc định chờ tiếp nhận
+  return "pending";
 };
 
 export default function AssignmentsUser() {
-  const [tasks, setTasks] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [responses, setResponses] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [inProgressIds, setInProgressIds] = useState(() => readIds(LS_INPROGRESS));
-  const [doneIds, setDoneIds] = useState(() => readIds(LS_DONE));
+  const fetchAll = async () => {
+    try {
+      setLoading(true);
 
-  // ===== Fetch tasks from BE =====
+      // ✅ 1) công việc của nhân viên đang đăng nhập
+      const wa = await getMyWorkAssignments();
+      setAssignments(Array.isArray(wa) ? wa : []);
+
+      // ✅ 2) phản hồi của chính nhân viên (accept/reject)
+      const rs = await getMyWorkAssignmentResponses();
+      setResponses(Array.isArray(rs) ? rs : []);
+    } catch (err) {
+      console.error("Lỗi khi tải công việc:", err);
+      setAssignments([]);
+      setResponses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        setLoading(true);
-        const result = await getAllTasks({ page: 1, limit: 100, sortBy: "id", sortDir: "DESC" });
-        const data = Array.isArray(result?.data) ? result.data : [];
-        setTasks(data);
-      } catch (error) {
-        console.error("Lỗi khi lấy danh sách tasks:", error);
-        setTasks([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTasks();
+    fetchAll();
   }, []);
 
-  // persist to localStorage
-  useEffect(() => writeIds(LS_INPROGRESS, inProgressIds), [inProgressIds]);
-  useEffect(() => writeIds(LS_DONE, doneIds), [doneIds]);
+  // quick map response theo workAssignmentId
+  const responseByAssignmentId = useMemo(() => {
+    const mp = new Map();
+    for (const r of responses) {
+      mp.set(Number(r.workAssignmentId), r);
+    }
+    return mp;
+  }, [responses]);
 
-  // ===== status helpers =====
-  const getStatus = (taskId) => {
-    const id = Number(taskId);
-    if (doneIds.includes(id)) return "done";
-    if (inProgressIds.includes(id)) return "inprogress";
-    return "pending";
-  };
+  // normalize để reuse lại TaskList UI
+  const items = useMemo(() => {
+    return assignments.map((w) => {
+      const rid = Number(w.id);
+      const resp = responseByAssignmentId.get(rid);
 
-  const onReceive = (taskId) => {
-    const id = Number(taskId);
+      return {
+        id: w.id,
+        title: w.taskName || w.taskNameFromTask || "N/A",
+        description: w.notes || "",
+        departmentName: w.departmentName || "",
+        startDate: w.assignedDate || null,
+        endDate: w.deadline || null,
+
+        waStatus: w.status || "PENDING",
+        responseStatus: resp?.status || "PENDING",
+
+        uiStatus: mapUiStatus({ waStatus: w.status, responseStatus: resp?.status }),
+        rejectReason: resp?.rejectReason || null,
+      };
+    });
+  }, [assignments, responseByAssignmentId]);
+
+  // ===== actions =====
+  const onReceive = async (workAssignmentId) => {
+    const id = Number(workAssignmentId);
     if (!id) return;
-    if (doneIds.includes(id)) return;
-    if (!inProgressIds.includes(id)) setInProgressIds((prev) => [...prev, id]);
+
+    try {
+      // ✅ “tiếp nhận” = tạo response ACCEPTED (employeeId lấy từ token)
+      await createMyWorkAssignmentResponse({ workAssignmentId: id, status: "ACCEPTED" });
+
+      // optional: cập nhật status assignment sang IN_PROGRESS để quản trị dễ theo dõi
+      await updateMyWorkAssignmentStatus(id, { status: "IN_PROGRESS" });
+
+      await fetchAll();
+    } catch (err) {
+      console.error("Tiếp nhận thất bại:", err?.response?.data || err);
+      alert(err?.response?.data?.message || "Tiếp nhận thất bại");
+    }
   };
 
-  const onDone = (taskId) => {
-    const id = Number(taskId);
+  const onReject = async (workAssignmentId) => {
+    const id = Number(workAssignmentId);
     if (!id) return;
-    if (!doneIds.includes(id)) setDoneIds((prev) => [...prev, id]);
-    setInProgressIds((prev) => prev.filter((x) => x !== id));
+
+    const reason = prompt("Nhập lý do từ chối:");
+    if (!reason) return;
+
+    try {
+      await createMyWorkAssignmentResponse({ workAssignmentId: id, status: "REJECTED", rejectReason: reason });
+      await fetchAll();
+    } catch (err) {
+      console.error("Từ chối thất bại:", err?.response?.data || err);
+      alert(err?.response?.data?.message || "Từ chối thất bại");
+    }
   };
 
-  // ===== Stats =====
+  const onDone = async (workAssignmentId) => {
+    const id = Number(workAssignmentId);
+    if (!id) return;
+
+    try {
+      // ✅ “hoàn thành” = update status assignment DONE (backend kiểm tra đúng employee)
+      await updateMyWorkAssignmentStatus(id, { status: "DONE" });
+      await fetchAll();
+    } catch (err) {
+      console.error("Hoàn thành thất bại:", err?.response?.data || err);
+      alert(err?.response?.data?.message || "Hoàn thành thất bại");
+    }
+  };
+
+  // ===== Stats (dựa trên uiStatus) =====
   const stats = useMemo(() => {
     let pending = 0, inProgress = 0, done = 0;
-    for (const t of tasks) {
-      const st = getStatus(t.id);
-      if (st === "pending") pending++;
-      else if (st === "inprogress") inProgress++;
-      else done++;
+
+    for (const t of items) {
+      if (t.uiStatus === "pending") pending++;
+      else if (t.uiStatus === "inprogress") inProgress++;
+      else if (t.uiStatus === "done") done++;
     }
     return { pending, inProgress, done };
-  }, [tasks, inProgressIds, doneIds]);
+  }, [items]);
 
   if (loading) {
     return (
@@ -98,16 +159,15 @@ export default function AssignmentsUser() {
         <main className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto p-8 bg-slate-50/50">
             <div className="max-w-7xl mx-auto space-y-6">
-
               <TaskStats stats={stats} />
 
               <TaskList
-                tasks={tasks}
-                getStatus={getStatus}
+                tasks={items}
+                getStatus={(id) => items.find((x) => Number(x.id) === Number(id))?.uiStatus || "pending"}
                 onReceive={onReceive}
                 onDone={onDone}
+                onReject={onReject}
               />
-
             </div>
           </div>
         </main>

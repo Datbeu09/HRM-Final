@@ -1,19 +1,49 @@
+// src/api/tasks.api.js
 import axiosClient from "./axiosClient";
 
+const unwrap = (res) => res?.data ?? res;
+
+const normalizeTask = (t = {}) => ({
+  id: t.id,
+  taskCode: t.taskCode,
+  taskName: t.taskName,
+  description: t.description,
+  created_at: t.created_at ?? t.createdAt ?? null,
+  updated_at: t.updated_at ?? t.updatedAt ?? null,
+});
+
+// backend field: id, taskCode, taskName, description, created_at, updated_at
 export const getAllTasks = async (params = {}) => {
   const res = await axiosClient.get("/tasks", { params });
-  // backend trả {success, data, paging}
-  return res.data || { data: [], paging: null };
+  const root = unwrap(res);
+
+  const raw = Array.isArray(root?.data)
+    ? root.data
+    : Array.isArray(root)
+    ? root
+    : [];
+
+  // giữ thêm paging nếu bạn cần sau này
+  const paging = root?.paging ?? null;
+
+  return { data: raw.map(normalizeTask), paging };
 };
 
+// dùng cho popup (list nhanh)
 export const getTasks = async () => {
-  const res = await axiosClient.get("/tasks", {
-    params: { page: 1, limit: 100, sortBy: "id", sortDir: "DESC" },
+  const { data } = await getAllTasks({
+    page: 1,
+    limit: 100,
+    sortBy: "id",
+    sortDir: "DESC",
   });
-  return Array.isArray(res.data?.data) ? res.data.data : [];
+  return data;
 };
 
 export const getTaskById = async (id) => {
   const res = await axiosClient.get(`/tasks/${id}`);
-  return res.data?.data || null;
+  const root = unwrap(res);
+
+  const raw = root?.data ?? root ?? null;
+  return raw ? normalizeTask(raw) : null;
 };

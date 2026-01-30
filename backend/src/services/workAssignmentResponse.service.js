@@ -3,7 +3,6 @@ const ApiError = require("../utils/ApiError");
 
 function normalizeStatus(s) {
   const v = String(s || "").toUpperCase();
-  // bạn có thể đổi theo enum thật trong DB/UI của bạn
   const allowed = new Set(["PENDING", "ACCEPTED", "REJECTED"]);
   if (!allowed.has(v)) throw new ApiError(400, "Invalid status");
   return v;
@@ -43,25 +42,34 @@ module.exports = {
   },
 
   async create(body) {
-    const workAssignmentId = body.workAssignmentId ?? body.workAssignmentID; // phòng khi FE gửi sai key
-    const employeeId = body.employeeId;
+    const workAssignmentId = body.workAssignmentId ?? body.workAssignmentID;
+    const employeeId = body.employeeId; // ✅ controller đã ép từ token
 
     if (!workAssignmentId) throw new ApiError(400, "workAssignmentId is required");
     if (!employeeId) throw new ApiError(400, "employeeId is required");
 
     const status = normalizeStatus(body.status);
-
     const rejectReason = body.rejectReason ?? null;
+
     if (status === "REJECTED" && !rejectReason) {
       throw new ApiError(400, "rejectReason is required when status=REJECTED");
     }
 
-    // check assignment tồn tại (và chưa bị xoá mềm)
+    // ✅ check assignment tồn tại + thuộc về chính employee đang login
     const [waRows] = await pool.query(
-      "SELECT id FROM workassignments WHERE id = ? AND deleted_at IS NULL LIMIT 1",
+      `
+      SELECT id, employeeId
+      FROM workassignments
+      WHERE id = ? AND deleted_at IS NULL
+      LIMIT 1
+      `,
       [workAssignmentId]
     );
     if (!waRows.length) throw new ApiError(400, "workAssignmentId is invalid");
+
+    if (Number(waRows[0].employeeId) !== Number(employeeId)) {
+      throw new ApiError(403, "You are not allowed to respond to this assignment");
+    }
 
     // upsert theo (workAssignmentId, employeeId)
     const [exists] = await pool.query(
@@ -87,10 +95,7 @@ module.exports = {
         [status, rejectReason, id]
       );
 
-      const [rows] = await pool.query(
-        "SELECT * FROM workassignmentresponses WHERE id = ?",
-        [id]
-      );
+      const [rows] = await pool.query("SELECT * FROM workassignmentresponses WHERE id = ?", [id]);
       return rows[0];
     }
 
@@ -104,10 +109,7 @@ module.exports = {
       [workAssignmentId, employeeId, status, rejectReason]
     );
 
-    const [rows] = await pool.query(
-      "SELECT * FROM workassignmentresponses WHERE id = ?",
-      [rs.insertId]
-    );
+    const [rows] = await pool.query("SELECT * FROM workassignmentresponses WHERE id = ?", [rs.insertId]);
     return rows[0];
   },
 };

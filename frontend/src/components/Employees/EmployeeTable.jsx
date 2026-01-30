@@ -1,8 +1,9 @@
+// EmployeeTable.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import Action from "../common/Action";
 
-const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd }) => {
+const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd, canAdd }) => {
   const navigate = useNavigate();
 
   const emptyRows = Math.max(0, itemsPerPage - (employees?.length || 0));
@@ -22,26 +23,28 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd }) => {
   return (
     <div className="p-6 min-h-[340px]">
       <div className="flex justify-end mb-6">
-        <Action
-          onClick={onAdd}
-          label={
-            <div className="flex items-center gap-2">
-              <span className="text-lg">＋</span>
-              <span>Thêm nhân viên</span>
-            </div>
-          }
-          className="
-            flex items-center gap-2
-            rounded-full
-            bg-gradient-to-r from-primary to-indigo-600
-            px-6 py-2.5
-            text-sm font-semibold text-white
-            shadow-md
-            hover:shadow-xl hover:scale-105
-            transition-all duration-200
-            active:scale-95
-          "
-        />
+        {canAdd && (
+          <Action
+            onClick={onAdd}
+            label={
+              <div className="flex items-center gap-2">
+                <span className="text-lg">＋</span>
+                <span>Thêm nhân viên</span>
+              </div>
+            }
+            className="
+              flex items-center gap-2
+              rounded-full
+              bg-gradient-to-r from-primary to-indigo-600
+              px-6 py-2.5
+              text-sm font-semibold text-white
+              shadow-md
+              hover:shadow-xl hover:scale-105
+              transition-all duration-200
+              active:scale-95
+            "
+          />
+        )}
       </div>
 
       <table className="w-full table-auto">
@@ -67,7 +70,11 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd }) => {
               <td className="px-4 py-2">{emp.position || "N/A"}</td>
               <td className="px-4 py-2">{emp.department || "N/A"}</td>
               <td className="px-4 py-2">
-                <span className={`px-3 py-1 rounded-full text-white text-sm ${contractBadgeCls(emp.contractType)}`}>
+                <span
+                  className={`px-3 py-1 rounded-full text-white text-sm ${contractBadgeCls(
+                    emp.contractType
+                  )}`}
+                >
                   {contractLabel(emp.contractType)}
                 </span>
               </td>

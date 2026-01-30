@@ -1,8 +1,8 @@
+// components/AccountPermission/AccountPermissionFilter.jsx
 import React from "react";
 import FilterButton from "./FilterButton";
 
-const ROLES = ["ADMIN", "HR", "ACCOUNTANT", "EMPLOYEE", "DIRECTOR"];
-const STATUSES = ["Hoạt động", "Ngoại tuyến"]; // status từ employee.workStatus
+const STATUSES = ["Hoạt động", "Ngoại tuyến"];
 
 export default function AccountPermissionFilter({
   search,
@@ -11,6 +11,7 @@ export default function AccountPermissionFilter({
   statusFilter,
   setRoleFilter,
   setStatusFilter,
+  roleOptions = [],
 }) {
   return (
     <div className="px-8 py-4 flex flex-col sm:flex-row gap-4 justify-between bg-background border-b border-border">
@@ -25,10 +26,11 @@ export default function AccountPermissionFilter({
           onChange={(e) => onSearch(e.target.value)}
         />
       </div>
+
       <div className="flex gap-2">
         <FilterButton
           label={`Vai trò: ${roleFilter || "Tất cả"}`}
-          options={ROLES}
+          options={roleOptions} // ✅ dynamic
           value={roleFilter}
           onChange={setRoleFilter}
         />

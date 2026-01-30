@@ -1,13 +1,19 @@
+// Employees.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import FilterBar from "../../components/Employees/FilterBar";
 import EmployeeTable from "../../components/Employees/EmployeeTable";
 import Pagination from "../../components/common/Pagination";
 import { getEmployees } from "../../api/employees.api";
 import EmployeesPopup from "../../components/Popup/Employees/EmployeesPopup";
+import { useAuth } from "../../auth/AuthContext"; // ✅ thêm
 
 const ITEMS_PER_PAGE = 5;
 
 const Employees = () => {
+  const { user } = useAuth(); // ✅ lấy user từ auth
+  const role = (user?.role || "").toUpperCase();
+  const canAdd = role === "ADMIN" || role === "HR"; // ✅ chỉ admin/hr
+
   const [employees, setEmployees] = useState([]);
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -79,7 +85,10 @@ const Employees = () => {
     setCurrentPage(1);
   };
 
-  const handleAddEmployee = () => setOpenModal(true);
+  const handleAddEmployee = () => {
+    if (!canAdd) return; // ✅ chặn thêm (defensive)
+    setOpenModal(true);
+  };
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -97,11 +106,16 @@ const Employees = () => {
         ) : errorMessage ? (
           <div className="p-4 text-center text-red-500">{errorMessage}</div>
         ) : (
-          <EmployeeTable employees={currentEmployees} itemsPerPage={ITEMS_PER_PAGE} onAdd={handleAddEmployee} />
+          <EmployeeTable
+            employees={currentEmployees}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onAdd={handleAddEmployee}
+            canAdd={canAdd} // ✅ truyền quyền xuống
+          />
         )}
       </div>
 
-      {openModal && (
+      {openModal && canAdd && ( // ✅ chắc chắn role khác không mở được
         <EmployeesPopup
           employees={employees}
           onClose={() => setOpenModal(false)}

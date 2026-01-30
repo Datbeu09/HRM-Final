@@ -6,7 +6,7 @@ module.exports = {
   // ================= LOGIN =================
   async login(req, res, next) {
     try {
-      const { username, password } = req.body;
+      const { username, password } = req.body || {};
       if (!username || !password) {
         throw new ApiError(400, "Username and password are required");
       }
@@ -18,11 +18,13 @@ module.exports = {
     }
   },
 
-  // ================= LIST =================
+  // ================= LIST (NO PAGINATION) =================
   async list(req, res, next) {
     try {
-      const data = await service.list(req.query, req.user);
-      res.json({ success: true, data });
+      // ✅ chỉ lấy các filter cần thiết, ignore page/limit
+      const { q, role, status } = req.query || {};
+      const data = await service.list({ q, role, status }, req.user);
+      res.json({ success: true, data }); // data là mảng
     } catch (e) {
       next(e);
     }

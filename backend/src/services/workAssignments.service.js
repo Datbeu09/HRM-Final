@@ -191,5 +191,56 @@ async function remove(id) {
   );
   return rs.affectedRows > 0;
 }
+async function getMine(employeeId) {
+  if (!employeeId) throw new ApiError(400, "employeeId is required");
 
-module.exports = { getAll, getById, create, update, remove };
+  const [rows] = await pool.query(
+    `
+    SELECT
+      wa.*,
+      e.name AS employeeName,
+      e.employeeCode AS employeeCode,
+      d.departmentName AS departmentName,
+      t.taskName AS taskNameFromTask,
+
+      -- response của chính employee này (nếu có)
+      war.status AS responseStatus,
+      war.respondedAt AS responseRespondedAt,
+      war.rejectReason AS responseRejectReason
+    FROM workassignments wa
+    LEFT JOIN employees e ON e.id = wa.employeeId
+    LEFT JOIN departments d ON d.id = wa.departmentId
+    LEFT JOIN tasks t ON t.id = wa.taskId
+    LEFT JOIN workassignmentresponses war
+      ON war.workAssignmentId = wa.id AND war.employeeId = ?
+    WHERE wa.deleted_at IS NULL
+      AND wa.employeeId = ?
+    ORDER BY wa.createdAt DESC
+    `,
+    [Number(employeeId), Number(employeeId)]
+  );
+
+  return rows;
+  async function updateMyStatus({ id, employeeId, status }) {
+  // check assignment thuộc về employee đang login
+  const [rows] = await pool.query(
+    `SELECT id, employeeId FROM workassignments WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
+    [id]
+  );
+
+  if (!rows.length) return null;
+
+  if (Number(rows[0].employeeId) !== Number(employeeId)) {
+    throw new ApiError(403, "You are not allowed to update this assignment");
+  }
+
+  await pool.query(
+    `UPDATE workassignments SET status = ?, updatedAt = NOW() WHERE id = ? AND deleted_at IS NULL`,
+    [status, id]
+  );
+
+  // trả lại row đầy đủ (reuse getById)
+  return getById(id);
+}
+}
+module.exports = { getAll, getById, create, update, remove, getMine };

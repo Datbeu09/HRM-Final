@@ -20,7 +20,7 @@ router.use("/political-affiliations", require("./politicalAffiliation.routes"));
 router.use("/familyMembers", require("./familyMembers.routes"));
 router.use("/workHistories", require("./workHistory.routes"));
 router.use("/workAssignments", require("./workAssignments.routes"));
-router.use("/workAssignmentResponses", require("./workAssignmentResponse.routes"));
+router.use("/work-assignment-responses", require("./workAssignmentResponse.routes"));
 router.use("/dailyAttendance", require("./dailyAttendance.routes"));
 router.use("/attendanceLogs", require("./attendanceLog.routes"));
 router.use("/benefits", require("./benefits.routes"));

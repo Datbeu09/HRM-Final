@@ -1,7 +1,7 @@
 import React from "react";
 import TaskItem from "./TaskItem";
 
-export default function TaskList({ tasks, getStatus, onReceive, onDone }) {
+export default function TaskList({ tasks, getStatus, onReceive, onDone, onReject }) {
   return (
     <div className="bg-white rounded-xl border overflow-hidden">
       <div className="px-6 py-4 border-b flex items-center justify-between">
@@ -11,7 +11,7 @@ export default function TaskList({ tasks, getStatus, onReceive, onDone }) {
 
       {tasks.length === 0 ? (
         <div className="p-8 text-center text-slate-500">
-          Chưa có công việc nào trong hệ thống.
+          Chưa có công việc nào được giao cho bạn.
         </div>
       ) : (
         <div className="divide-y">
@@ -21,6 +21,7 @@ export default function TaskList({ tasks, getStatus, onReceive, onDone }) {
               task={t}
               status={getStatus(t.id)}
               onReceive={() => onReceive(t.id)}
+              onReject={() => onReject?.(t.id)}
               onDone={() => onDone(t.id)}
             />
           ))}

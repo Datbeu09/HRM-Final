@@ -2,21 +2,21 @@ const express = require("express");
 const router = express.Router();
 
 const controller = require("../controllers/workAssignment.controller");
-// const requireAuth = require("../middleware/requireAuth");
+const requireAuth = require("../middleware/requireAuth");
 
-// GET /api/workAssignments
+router.use(requireAuth);
+
+// employee
+router.get("/me", controller.getMyWorkAssignments);
+
+// ✅ employee update status của chính mình
+router.patch("/:id/my-status", controller.updateMyWorkAssignmentStatus);
+
+// admin filters
 router.get("/", controller.getAllWorkAssignments);
-
-// GET /api/workAssignments/:id
 router.get("/:id", controller.getWorkAssignmentById);
-
-// POST /api/workAssignments
 router.post("/", controller.createWorkAssignment);
-
-// PUT /api/workAssignments/:id
 router.put("/:id", controller.updateWorkAssignment);
-
-// DELETE /api/workAssignments/:id (soft delete)
 router.delete("/:id", controller.deleteWorkAssignment);
 
 module.exports = router;

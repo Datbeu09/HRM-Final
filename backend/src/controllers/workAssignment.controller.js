@@ -1,3 +1,4 @@
+// src/controllers/workAssignment.controller.js
 const ApiError = require("../utils/ApiError");
 const service = require("../services/workAssignments.service");
 
@@ -8,7 +9,19 @@ function validateCreate(body) {
 }
 
 module.exports = {
-  // GET /workAssignments
+  // ✅ GET /api/workAssignments/me
+  async getMyWorkAssignments(req, res, next) {
+    try {
+      const employeeId = req.user?.employeeId;
+      if (!employeeId) throw new ApiError(401, "Missing employeeId in token");
+
+      const data = await service.getMine(employeeId); // ✅ dùng getMine
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  },
+
   async getAllWorkAssignments(req, res, next) {
     try {
       const data = await service.getAll(req.query);
@@ -18,7 +31,6 @@ module.exports = {
     }
   },
 
-  // GET /workAssignments/:id
   async getWorkAssignmentById(req, res, next) {
     try {
       const row = await service.getById(req.params.id);
@@ -29,14 +41,10 @@ module.exports = {
     }
   },
 
-  // POST /workAssignments
   async createWorkAssignment(req, res, next) {
     try {
       validateCreate(req.body);
-
-      // ưu tiên lấy từ token nếu có (admin tạo assignment)
-      const assignedByAccountId =
-        req.body.assignedByAccountId ?? req.user?.id ?? null;
+      const assignedByAccountId = req.user?.id ?? null;
 
       const created = await service.create({
         ...req.body,
@@ -49,11 +57,9 @@ module.exports = {
     }
   },
 
-  // PUT /workAssignments/:id
   async updateWorkAssignment(req, res, next) {
     try {
-      const assignedByAccountId =
-        req.body.assignedByAccountId ?? req.user?.id ?? undefined;
+      const assignedByAccountId = req.user?.id ?? undefined;
 
       const updated = await service.update(req.params.id, {
         ...req.body,
@@ -67,12 +73,32 @@ module.exports = {
     }
   },
 
-  // DELETE /workAssignments/:id
   async deleteWorkAssignment(req, res, next) {
     try {
       const ok = await service.remove(req.params.id);
       if (!ok) throw new ApiError(404, "WorkAssignment not found");
       res.json({ success: true, message: "Deleted" });
+    } catch (e) {
+      next(e);
+    }
+  },
+  // ✅ PATCH /workAssignments/:id/my-status
+  async updateMyWorkAssignmentStatus(req, res, next) {
+    try {
+      const employeeId = req.user?.employeeId;
+      if (!employeeId) throw new ApiError(401, "Missing employeeId in token");
+
+      const id = Number(req.params.id);
+      if (!id) throw new ApiError(400, "Invalid workAssignment id");
+
+      const status = String(req.body?.status || "").toUpperCase();
+      const allowed = new Set(["IN_PROGRESS", "DONE"]);
+      if (!allowed.has(status)) throw new ApiError(400, "Invalid status");
+
+      const updated = await service.updateMyStatus({ id, employeeId, status });
+      if (!updated) throw new ApiError(404, "WorkAssignment not found");
+
+      res.json({ success: true, data: updated });
     } catch (e) {
       next(e);
     }
