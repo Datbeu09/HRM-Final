@@ -1,6 +1,7 @@
 // src/components/EmployeesDetail/EducationInfo.jsx
 import React from "react";
 import Info from "../common/Info"; // sửa path cho đúng
+import HeaderTitle from "./HeaderTitle";
 
 const BadgeValue = ({ value, tone = "slate" }) => {
   if (!value) return <span className="text-slate-500">-</span>;
@@ -24,15 +25,9 @@ const BadgeValue = ({ value, tone = "slate" }) => {
 export default function EducationInfo({ employee, qualifications = [] }) {
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <span className="w-1 h-6 rounded-full bg-teal-500" />
-        <h3 className="text-lg font-bold text-slate-900">Học vấn</h3>
-      </div>
+      <HeaderTitle title="Thông tin học vấn" />
 
       {/* Trình độ chung */}
-
-
 
       {qualifications.length === 0 ? (
         <p className="text-sm text-slate-500">

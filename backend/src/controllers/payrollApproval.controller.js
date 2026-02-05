@@ -10,7 +10,7 @@ function currentYYYYMM() {
 }
 
 module.exports = {
-  // GET /api/payroll-approval?month=2026-01&department=Marketing
+  // GET /api/payroll-approval?month=2026-01&department=1
   async get(req, res, next) {
     try {
       let { month, department } = req.query;
@@ -18,7 +18,7 @@ module.exports = {
 
       const data = await service.getPayrollApproval({
         monthStr: month,
-        department,
+        department, // ✅ departmentId
       });
 
       res.json({ success: true, data });
@@ -43,16 +43,16 @@ module.exports = {
   // POST /api/payroll-approval/approve
   async approve(req, res, next) {
     try {
-      let { month, department } = req.body || {};
+      let { month, department, approvedByAccountId } = req.body || {};
       if (!month) month = currentYYYYMM();
 
-      const approvedByAccountId = req.user?.id || req.body?.approvedByAccountId;
-      if (!approvedByAccountId) throw new ApiError(401, "Missing approvedByAccountId");
+      const approverId = req.user?.id || approvedByAccountId;
+      if (!approverId) throw new ApiError(401, "Missing approvedByAccountId");
 
       const data = await service.approve({
         monthStr: month,
         department,
-        approvedByAccountId,
+        approvedByAccountId: approverId,
       });
 
       res.json({ success: true, data });
@@ -78,6 +78,49 @@ module.exports = {
       });
 
       res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // POST /api/payroll-approval/send-email
+  async sendEmail(req, res, next) {
+    try {
+      let { month, department } = req.body || {};
+      if (!month) month = currentYYYYMM();
+
+      const byAccountId = req.user?.id || null;
+
+      const data = await service.sendPayrollEmail({
+        monthStr: month,
+        department,
+        byAccountId,
+      });
+
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // POST /api/payroll-approval/export  (trả file excel)
+  async exportExcel(req, res, next) {
+    try {
+      let { month, department } = req.body || {};
+      if (!month) month = currentYYYYMM();
+
+      const { buffer, filename } = await service.exportPayrollToExcel({
+        monthStr: month,
+        department,
+      });
+
+      // trả file excel
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      );
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(buffer);
     } catch (e) {
       next(e);
     }

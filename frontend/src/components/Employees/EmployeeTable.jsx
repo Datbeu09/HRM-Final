@@ -1,10 +1,11 @@
-// EmployeeTable.jsx
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../../auth/AuthContext";
 import Action from "../common/Action";
 
-const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd, canAdd }) => {
+const EmployeeTable = ({ employees, departments, itemsPerPage = 5, onAdd, canAdd }) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const emptyRows = Math.max(0, itemsPerPage - (employees?.length || 0));
 
@@ -20,6 +21,22 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd, canAdd }) => {
     return "bg-slate-400";
   };
 
+  const handleRowClick = (empId) => {
+    const { role } = user || {};
+    const isAuthorized = role === "ADMIN" || role === "HR";
+
+    if (isAuthorized) {
+      navigate(`/employees/${empId}`);
+    } else {
+      alert("Bạn không có quyền truy cập vào trang chi tiết nhân viên.");
+    }
+  };
+
+  const getDepartmentName = (departmentId) => {
+    const department = departments.find((dept) => dept.id === departmentId);
+    return department ? department.departmentName : "N/A";
+  };
+
   return (
     <div className="p-6 min-h-[340px]">
       <div className="flex justify-end mb-6">
@@ -32,17 +49,7 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd, canAdd }) => {
                 <span>Thêm nhân viên</span>
               </div>
             }
-            className="
-              flex items-center gap-2
-              rounded-full
-              bg-gradient-to-r from-primary to-indigo-600
-              px-6 py-2.5
-              text-sm font-semibold text-white
-              shadow-md
-              hover:shadow-xl hover:scale-105
-              transition-all duration-200
-              active:scale-95
-            "
+            className="flex items-center gap-2 rounded-full bg-gradient-to-r from-primary to-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-md hover:shadow-xl hover:scale-105 transition-all duration-200 active:scale-95"
           />
         )}
       </div>
@@ -52,23 +59,23 @@ const EmployeeTable = ({ employees, itemsPerPage = 5, onAdd, canAdd }) => {
           <tr>
             <th className="px-4 py-2 text-left">Mã NV</th>
             <th className="px-4 py-2 text-left">Họ và tên</th>
-            <th className="px-4 py-2 text-left">Chức vụ</th>
+            {/* <th className="px-4 py-2 text-left">Chức vụ</th> */}
             <th className="px-4 py-2 text-left">Phòng ban</th>
             <th className="px-4 py-2 text-left">Loại</th>
           </tr>
         </thead>
 
         <tbody>
-          {(employees || []).map((emp) => (
+          {employees.map((emp) => (
             <tr
               key={emp.id}
-              onClick={() => navigate(`/employees/${emp.id}`, { state: emp })}
+              onClick={() => handleRowClick(emp.id)}
               className="border-t h-14 cursor-pointer hover:bg-primary hover:text-white transition"
             >
               <td className="px-4 py-2">{emp.employeeCode}</td>
               <td className="px-4 py-2 font-medium">{emp.name || "Không có tên"}</td>
-              <td className="px-4 py-2">{emp.position || "N/A"}</td>
-              <td className="px-4 py-2">{emp.department || "N/A"}</td>
+              {/* <td className="px-4 py-2">{emp.position || "N/A"}</td> */}
+              <td className="px-4 py-2">{getDepartmentName(emp.departmentId)}</td> {/* Hiển thị departmentName */}
               <td className="px-4 py-2">
                 <span
                   className={`px-3 py-1 rounded-full text-white text-sm ${contractBadgeCls(

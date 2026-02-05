@@ -56,7 +56,13 @@ export default function Sidebar() {
         label: "Báo cáo & Thống kê",
         permissionCode: "REPORT_VIEW",
       },
-
+      // Profile
+      {
+        path: "/profile/:id",
+        icon: "person",
+        label: "Thông tin cá nhân",
+        permissionCode: "PROFILE_VIEW",
+      },
       // Employee
       {
         path: "/employees",
@@ -108,12 +114,12 @@ export default function Sidebar() {
       },
 
       // Finance / Salary
-      {
-        path: "/finance",
-        icon: "account_balance",
-        label: "Tổng quan tài chính",
-        permissionCode: "FINANCE_OVERVIEW",
-      },
+      // {
+      //   path: "/finance",
+      //   icon: "account_balance",
+      //   label: "Tổng quan tài chính",
+      //   permissionCode: "FINANCE_OVERVIEW",
+      // },
       // {
       //   path: "/salary",
       //   icon: "receipt_long",
@@ -126,12 +132,12 @@ export default function Sidebar() {
         label: "Duyệt bảng lương",
         permissionCode: "SALARY_APPROVE",
       },
-      // {
-      //   path: "/tax-deduction",
-      //   icon: "request_quote",
-      //   label: "Thuế khấu trừ",
-      //   permissionCode: "TAX_DEDUCTION",
-      // },
+      {
+        path: "/tax-deduction",
+        icon: "request_quote",
+        label: "Thuế khấu trừ",
+        permissionCode: "TAX_DEDUCTION",
+      },
 
       // Benefits / Insurance
       {
@@ -149,13 +155,7 @@ export default function Sidebar() {
         permissionCode: "ACCOUNT_MANAGE",
       },
 
-      // Profile
-      {
-        path: "/profile",
-        icon: "person",
-        label: "Thông tin cá nhân",
-        permissionCode: "PROFILE_VIEW",
-      },
+
     ],
     [permissionCodes]
   );
@@ -186,11 +186,10 @@ export default function Sidebar() {
                   to={item.path}
                   className={({ isActive }) =>
                     `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors
-                     ${
-                       isActive
-                         ? "bg-primarySoft text-primary border-r-4 border-primary font-bold"
-                         : "text-gray-700 hover:bg-gray-50"
-                     }`
+                     ${isActive
+                      ? "bg-primarySoft text-primary border-r-4 border-primary font-bold"
+                      : "text-gray-700 hover:bg-gray-50"
+                    }`
                   }
                 >
                   <span className="material-symbols-outlined">{item.icon}</span>

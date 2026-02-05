@@ -118,6 +118,10 @@ export default function AttendanceDetail() {
         status: x?.status ?? (isSunday ? "WEEKEND" : "ABSENT"),
         hoursWorked: x?.hoursWorked ?? 0,
         notes: x?.notes ?? "",
+
+        // 🔥 GIỮ GIỜ VÀO / GIỜ RA
+        checkInAt: x?.checkInAt ?? null,
+        checkOutAt: x?.checkOutAt ?? null,
       });
     }
     return arr;
@@ -168,47 +172,44 @@ export default function AttendanceDetail() {
 
   return (
     <div className="min-h-[calc(100vh-0px)] bg-slate-50 dark:bg-slate-950">
-    <div className="max-w-[1200px] mx-auto p-6 md:p-8 space-y-6">
-      <DetailHeader
-        loading={loading}
-        error={error}
-        month={month}
-        year={year}
-        empName={empName}
-        empCode={empCode}
-        onBack={() => navigate(-1)}
-        onExport={() => alert("Bạn muốn xuất PDF hay Excel?")}
-      />
+      <div className="max-w-[1200px] mx-auto p-6 md:p-8 space-y-6">
+        <DetailHeader
+          loading={loading}
+          error={error}
+          month={month}
+          year={year}
+          empName={empName}
+          empCode={empCode}
+          onBack={() => navigate(-1)}
+          onExport={() => alert("Bạn muốn xuất PDF hay Excel?")}
+        />
 
-      <SummaryCards
-        present={summary.totalPresentDays ?? 0}
-        absent={summary.totalAbsentDays ?? 0}
-        leave={summary.totalLeaveDays ?? 0}
-      />
+       <SummaryCards days={detail?.days || []} />
 
-      <AttendanceDetailTable
-        loading={loading}
-        month={month}
-        year={year}
-        rows={pageRows}
-        page={page}
-        totalPages={totalPages}
-        pageSize={itemsPerPage}
-        totalDays={dayRows.length}
-        onPrev={() => setPage((p) => Math.max(1, p - 1))}
-        onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
-        onPage={(p) => setPage(p)}
-        onEditNote={(id, notes) => openEditNote(id, notes)}
-      />
 
-      <EditNoteModal
-        open={editing.open}
-        value={editing.notes}
-        onChange={(v) => setEditing((s) => ({ ...s, notes: v }))}
-        onClose={closeEditNote}
-        onSave={saveNote}
-      />
-    </div>
+        <AttendanceDetailTable
+          loading={loading}
+          month={month}
+          year={year}
+          rows={pageRows}
+          page={page}
+          totalPages={totalPages}
+          pageSize={itemsPerPage}
+          totalDays={dayRows.length}
+          onPrev={() => setPage((p) => Math.max(1, p - 1))}
+          onNext={() => setPage((p) => Math.min(totalPages, p + 1))}
+          onPage={(p) => setPage(p)}
+          onEditNote={(id, notes) => openEditNote(id, notes)}
+        />
+
+        <EditNoteModal
+          open={editing.open}
+          value={editing.notes}
+          onChange={(v) => setEditing((s) => ({ ...s, notes: v }))}
+          onClose={closeEditNote}
+          onSave={saveNote}
+        />
+      </div>
     </div>
   );
 }

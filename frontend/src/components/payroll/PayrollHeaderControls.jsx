@@ -44,8 +44,8 @@ export default function PayrollHeaderControls({
             <option value="">Tất cả phòng ban</option>
 
             {departments.map((d) => (
-              <option key={d.id ?? d.name} value={d.name}>
-                {d.name}
+              <option key={d.id} value={d.departmentName}>
+                {d.departmentName}
               </option>
             ))}
           </select>

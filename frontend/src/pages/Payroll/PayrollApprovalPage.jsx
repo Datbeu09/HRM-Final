@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   getPayrollApproval,
-  autoCheckPayroll,
+  sendPayrollEmail,
+  exportPayrollToExcel,
   approvePayroll,
-  requestPayrollEdit,
 } from "../../api/payrollApproval.api";
 import { getDepartments } from "../../api/departments.api";
 
@@ -17,13 +17,8 @@ import { normalizeResponse } from "../../components/payroll/payrollUtils";
 
 export default function FinanceApprovalPage() {
   const [month, setMonth] = useState("2026-01");
-
-  // ✅ phòng ban lấy từ API /departments
   const [departments, setDepartments] = useState([]);
-
-  // ✅ chọn phòng ban: "" = Tất cả
-  const [department, setDepartment] = useState("");
-
+  const [department, setDepartment] = useState(""); // departmentId (string/number)
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("net_desc");
 
@@ -32,10 +27,10 @@ export default function FinanceApprovalPage() {
   const [error, setError] = useState("");
 
   const [kpi, setKpi] = useState({ gross: 0, tax: 0, ins: 0, net: 0 });
-  const [rows, setRows] = useState([]); // normalized employees
+  const [rows, setRows] = useState([]);
   const [checkState, setCheckState] = useState(null);
 
-  // ✅ fetch departments 1 lần
+  // ===== Fetch Departments =====
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
@@ -46,20 +41,18 @@ export default function FinanceApprovalPage() {
         setDepartments([]);
       }
     };
-
     fetchDepartments();
   }, []);
 
-  const fetchData = async () => {
+  // ===== Fetch Payroll Approval Data =====
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const data = await getPayrollApproval({
         month,
-        department: department || undefined, // "" => ALL
+        department: department || undefined,
       });
-
-      console.log("[FE] payroll-approval raw =", data);
 
       const normalized = normalizeResponse(data);
       setKpi(normalized.kpi);
@@ -73,38 +66,23 @@ export default function FinanceApprovalPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [month, department]);
 
   useEffect(() => {
     fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [month, department]);
+  }, [fetchData]);
 
+  // ===== Filter =====
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
-
-    let r = rows.filter(
+    return (rows || []).filter(
       (x) =>
         String(x.employeeCode || "").toLowerCase().includes(qq) ||
         String(x.name || "").toLowerCase().includes(qq)
     );
+  }, [rows, q]);
 
-    r.sort((a, b) => {
-      const an = Number(a.netSalary || 0);
-      const bn = Number(b.netSalary || 0);
-
-      if (sort === "net_desc") return bn - an;
-      if (sort === "net_asc") return an - bn;
-      if (sort === "name_asc")
-        return String(a.name || "").localeCompare(String(b.name || ""));
-      if (sort === "name_desc")
-        return String(b.name || "").localeCompare(String(a.name || ""));
-      return 0;
-    });
-
-    return r;
-  }, [rows, q, sort]);
-
+  // ===== UI Status =====
   const dataStatusLabel = useMemo(() => {
     if (loading) return "Đang tải...";
     if (error) return "Có lỗi dữ liệu";
@@ -118,56 +96,72 @@ export default function FinanceApprovalPage() {
     return "bg-green-500/70";
   }, [error, checkState]);
 
-  const handleAutoCheck = async () => {
+  // ===== Actions =====
+
+  const handleSendEmail = async () => {
+    if (loading || submitting) return;
+
     setSubmitting(true);
     setError("");
     try {
-      const data = await autoCheckPayroll({
-        month,
-        department: department || undefined,
-      });
-      setCheckState(data);
+      await sendPayrollEmail({ month, department: department || undefined });
+      alert("Phiếu lương đã được gửi qua email.");
     } catch (e) {
       console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Auto-check failed");
+      setError(e?.response?.data?.message || e?.message || "Gửi phiếu lương thất bại");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleExportFile = async () => {
+    if (loading || submitting) return;
+
+    setSubmitting(true);
+    setError("");
+    try {
+      // ✅ API export trả về Blob (responseType: "blob")
+      const blob = await exportPayrollToExcel({
+        month,
+        department: department || undefined,
+      });
+
+      if (!blob) throw new Error("Không nhận được file từ server.");
+
+      const url = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+
+      const depSuffix = department ? `_dep${department}` : "";
+      link.download = `payroll_${month}${depSuffix}.xlsx`;
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      window.URL.revokeObjectURL(url);
+
+      alert("File Excel đã được xuất.");
+    } catch (e) {
+      console.error(e);
+      setError(e?.response?.data?.message || e?.message || "Xuất file thất bại");
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const handleApprove = async () => {
+    if (loading || submitting) return;
+
     setSubmitting(true);
     setError("");
     try {
       await approvePayroll({ month, department: department || undefined });
       await fetchData();
+      alert("Bảng lương đã được chốt thành công.");
     } catch (e) {
       console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Approve failed");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleRequestEdit = async () => {
-    const reason = window.prompt("Nhập lý do yêu cầu chỉnh sửa:");
-    if (!reason) return;
-
-    setSubmitting(true);
-    setError("");
-    try {
-      await requestPayrollEdit({
-        month,
-        department: department || undefined,
-        reason,
-      });
-      await fetchData();
-      alert("Đã gửi yêu cầu chỉnh sửa.");
-    } catch (e) {
-      console.error(e);
-      setError(
-        e?.response?.data?.message || e?.message || "Request edit failed"
-      );
+      setError(e?.response?.data?.message || e?.message || "Chốt bảng lương thất bại");
     } finally {
       setSubmitting(false);
     }
@@ -182,7 +176,7 @@ export default function FinanceApprovalPage() {
             setMonth={setMonth}
             department={department}
             setDepartment={setDepartment}
-            departments={departments}   // ✅ dùng API departments
+            departments={departments}
             onReload={fetchData}
             loading={loading}
             submitting={submitting}
@@ -196,8 +190,8 @@ export default function FinanceApprovalPage() {
             setQ={setQ}
             sort={sort}
             setSort={setSort}
-            onAutoCheck={handleAutoCheck}
-            onRequestEdit={handleRequestEdit}
+            onSendEmail={handleSendEmail}
+            onExportFile={handleExportFile}
             onApprove={handleApprove}
             loading={loading}
             submitting={submitting}

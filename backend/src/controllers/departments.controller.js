@@ -1,3 +1,4 @@
+// src/controllers/departments.controller.js
 const ApiError = require("../utils/ApiError");
 const service = require("../services/departments.service");
 

@@ -1,4 +1,3 @@
-// src/api/employees.api.js
 import axiosClient from "./axiosClient";
 
 const EMP_FIELDS = [
@@ -6,7 +5,7 @@ const EMP_FIELDS = [
   "name",
   "title",
   "position",
-  "department",
+  "departmentId", // sửa từ "department" thành "departmentId"
   "status",
   "dob",
   "gender",
@@ -41,7 +40,7 @@ const normalizeEmployee = (e = {}) => ({
   name: e.name,
   title: e.title,
   position: e.position,
-  department: e.department,
+  departmentId: e.departmentId, // cập nhật với departmentId
   status: e.status,
   dob: e.dob,
   gender: e.gender,
@@ -60,8 +59,8 @@ const normalizeEmployee = (e = {}) => ({
   workStatus: e.workStatus,
   familyInfo: e.familyInfo,
   policyId: e.policyId,
-  createdAt: e.createdAt ?? e.created_at ?? null,
-  updatedAt: e.updatedAt ?? e.updated_at ?? null,
+  createdAt: e.createdAt ?? e.created_at ?? null, // xử lý ngày tạo
+  updatedAt: e.updatedAt ?? e.updated_at ?? null, // xử lý ngày cập nhật
 });
 
 // helper: chịu cả 2 kiểu axiosClient

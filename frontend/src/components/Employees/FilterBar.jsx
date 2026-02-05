@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useState, useMemo } from "react";
 
 const FilterBar = ({ onSearch, onReset }) => {
   const [name, setName] = useState("");
@@ -7,11 +7,8 @@ const FilterBar = ({ onSearch, onReset }) => {
   const [position, setPosition] = useState("Tất cả vị trí");
   const [contractType, setContractType] = useState("Tất cả loại HĐ");
 
-
-  // (optional) có thể build danh sách department động từ API,
-  // nhưng hiện mình để tĩnh theo data bạn gửi.
   const deptOptions = useMemo(
-    () => ["Tất cả phòng ban", "CNTT", "Ban giám đốc", "Nhân sự", "Kế toán", "Marketing", "Kinh doanh", "Hành chính", "Sản xuất", "Kho", "Bảo vệ", "Tạp vụ"],
+    () => ["Tất cả phòng ban", "Công nghệ thông tin", "Ban giám đốc", "Nhân sự", "Kế toán", "Marketing"],
     []
   );
 

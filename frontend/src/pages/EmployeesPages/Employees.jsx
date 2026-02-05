@@ -1,11 +1,11 @@
-// Employees.jsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import FilterBar from "../../components/Employees/FilterBar";
 import EmployeeTable from "../../components/Employees/EmployeeTable";
 import Pagination from "../../components/common/Pagination";
 import { getEmployees } from "../../api/employees.api";
 import EmployeesPopup from "../../components/Popup/Employees/EmployeesPopup";
-import { useAuth } from "../../auth/AuthContext"; // ✅ thêm
+import { useAuth } from "../../auth/AuthContext";
+import { getDepartments } from "../../api/departments.api";  // Thêm import
 
 const ITEMS_PER_PAGE = 5;
 
@@ -15,6 +15,7 @@ const Employees = () => {
   const canAdd = role === "ADMIN" || role === "HR"; // ✅ chỉ admin/hr
 
   const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);  // Biến lưu danh sách phòng ban
   const [filteredEmployees, setFilteredEmployees] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [openModal, setOpenModal] = useState(false);
@@ -25,10 +26,11 @@ const Employees = () => {
     setLoading(true);
     setErrorMessage("");
     try {
-      const data = await getEmployees();
-      const list = Array.isArray(data) ? data : [];
-      setEmployees(list);
-      setFilteredEmployees(list);
+      const employeeData = await getEmployees();
+      const departmentData = await getDepartments();  // Lấy thông tin phòng ban
+      setEmployees(employeeData);
+      setDepartments(departmentData);  // Lưu phòng ban vào state
+      setFilteredEmployees(employeeData);
       setCurrentPage(1);
     } catch (error) {
       console.error("Lỗi khi lấy danh sách nhân viên:", error);
@@ -55,7 +57,6 @@ const Employees = () => {
   const handleSearch = (searchParams) => {
     const keyword = (searchParams?.name || "").trim().toLowerCase();
     const code = (searchParams?.employeeCode || "").trim().toLowerCase();
-
     const dept = searchParams?.department || "Tất cả phòng ban";
     const position = searchParams?.position || "Tất cả vị trí";
     const contractType = searchParams?.contractType || "Tất cả loại HĐ";
@@ -68,7 +69,11 @@ const Employees = () => {
       const matchName = keyword ? empName.includes(keyword) : true;
       const matchCode = code ? empCode.includes(code) : true;
 
-      const matchDept = dept === "Tất cả phòng ban" ? true : emp?.department === dept;
+      const matchDept =
+        dept === "Tất cả phòng ban"
+          ? true
+          : departments.find((deptItem) => deptItem.departmentName === dept)?.id === emp?.departmentId;
+
       const matchPos = position === "Tất cả vị trí" ? true : emp?.position === position;
       const matchContract = contractType === "Tất cả loại HĐ" ? true : emp?.contractType === contractType;
       const matchStatus = status === "Tất cả trạng thái" ? true : emp?.status === status;
@@ -86,7 +91,7 @@ const Employees = () => {
   };
 
   const handleAddEmployee = () => {
-    if (!canAdd) return; // ✅ chặn thêm (defensive)
+    if (!canAdd) return;
     setOpenModal(true);
   };
 
@@ -108,14 +113,15 @@ const Employees = () => {
         ) : (
           <EmployeeTable
             employees={currentEmployees}
+            departments={departments} // Truyền departments để hiển thị departmentName
             itemsPerPage={ITEMS_PER_PAGE}
             onAdd={handleAddEmployee}
-            canAdd={canAdd} // ✅ truyền quyền xuống
+            canAdd={canAdd}
           />
         )}
       </div>
 
-      {openModal && canAdd && ( // ✅ chắc chắn role khác không mở được
+      {openModal && canAdd && (
         <EmployeesPopup
           employees={employees}
           onClose={() => setOpenModal(false)}

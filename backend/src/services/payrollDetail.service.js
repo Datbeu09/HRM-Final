@@ -23,18 +23,19 @@ module.exports = {
     // ===== employee =====
     const [[employee]] = await pool.query(
       `
-      SELECT id, employeeCode, name, department, position, title
-      FROM employees
-      WHERE id = ?
+      SELECT 
+        e.id, e.employeeCode, e.name, e.departmentId, d.departmentName,
+        e.position, e.title
+      FROM employees e
+      LEFT JOIN departments d ON d.id = e.departmentId
+      WHERE e.id = ?
       `,
       [employeeId]
     );
 
-    if (!employee) {
-      throw new ApiError(404, "Không tìm thấy nhân viên");
-    }
+    if (!employee) throw new ApiError(404, "Không tìm thấy nhân viên");
 
-    // ===== monthlysalary (có thì trả, không có -> payroll = null) =====
+    // ===== monthlysalary =====
     const [[salary]] = await pool.query(
       `
       SELECT *
@@ -60,7 +61,7 @@ module.exports = {
       [employeeId, month, year]
     );
 
-    // ===== allowances (nếu có bảng) =====
+    // ===== allowances =====
     let allowances = [];
     const hasAllowanceTable = await tableExists("employeeallowances");
     if (hasAllowanceTable) {
@@ -77,7 +78,7 @@ module.exports = {
 
     return {
       employee,
-      payroll: salary || null, // ✅ null nếu chưa có bảng lương
+      payroll: salary || null,
       allowances,
       attendance: attendance || null,
       month,

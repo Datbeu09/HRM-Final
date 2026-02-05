@@ -9,7 +9,6 @@ function getEmployeeIdFromUser(user) {
 }
 
 function todayYMD() {
-  // dùng local date yyyy-mm-dd
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
@@ -23,7 +22,6 @@ module.exports = {
     const employeeId = getEmployeeIdFromUser(user);
     const workDate = todayYMD();
 
-    // today
     const [tRows] = await pool.query(
       `SELECT id, employeeId, workDate, checkInAt, checkOutAt, workedMinutes, status, note
        FROM attendancelogs
@@ -33,7 +31,6 @@ module.exports = {
     );
     const today = tRows[0] || null;
 
-    // recent
     const [rRows] = await pool.query(
       `SELECT id, employeeId, workDate, checkInAt, checkOutAt, workedMinutes, status, note
        FROM attendancelogs
@@ -43,12 +40,12 @@ module.exports = {
       [employeeId]
     );
 
-    // monthly summary (tháng hiện tại)
     const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
-
-    const monthly = await this.getMonthlySummary({ user, month, year });
+    const monthly = await this.getMonthlySummary({
+      user,
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+    });
 
     return { today, monthly, recent: rRows };
   },
@@ -68,7 +65,8 @@ module.exports = {
 
     if (!existed) {
       await pool.query(
-        `INSERT INTO attendancelogs (employeeId, workDate, checkInAt, workedMinutes, status, createdByAccountId, updatedByAccountId, note, created_at, updated_at)
+        `INSERT INTO attendancelogs
+         (employeeId, workDate, checkInAt, workedMinutes, status, createdByAccountId, updatedByAccountId, note, created_at, updated_at)
          VALUES (?, ?, NOW(), 0, 'Đang làm', ?, ?, '', NOW(), NOW())`,
         [employeeId, workDate, user.id || 1, user.id || 1]
       );
@@ -102,7 +100,6 @@ module.exports = {
     if (!existed?.checkInAt) throw new ApiError(400, "Bạn phải CHECK IN trước");
     if (existed?.checkOutAt) throw new ApiError(400, "Hôm nay bạn đã CHECK OUT rồi");
 
-    // tính phút làm: TIMESTAMPDIFF(MINUTE, checkInAt, NOW())
     await pool.query(
       `UPDATE attendancelogs
        SET checkOutAt=NOW(),
@@ -125,28 +122,9 @@ module.exports = {
     return out[0];
   },
 
-  // ============ RECENT ============
-  async getRecent({ user, limit = 4 }) {
-    const employeeId = getEmployeeIdFromUser(user);
-    const lim = Math.max(1, Math.min(20, Number(limit || 4)));
-
-    const [rows] = await pool.query(
-      `SELECT id, employeeId, workDate, checkInAt, checkOutAt, workedMinutes, status, note
-       FROM attendancelogs
-       WHERE employeeId=?
-       ORDER BY workDate DESC, id DESC
-       LIMIT ?`,
-      [employeeId, lim]
-    );
-    return rows;
-  },
-
   // ============ MONTHLY SUMMARY ============
   async getMonthlySummary({ user, month, year }) {
     const employeeId = getEmployeeIdFromUser(user);
-    const m = Number(month);
-    const y = Number(year);
-    if (!m || !y) throw new ApiError(400, "month/year is required");
 
     const [rows] = await pool.query(
       `SELECT
@@ -158,7 +136,7 @@ module.exports = {
        WHERE employeeId=?
          AND MONTH(workDate)=?
          AND YEAR(workDate)=?`,
-      [employeeId, m, y]
+      [employeeId, month, year]
     );
 
     const r = rows[0] || {};
@@ -170,27 +148,40 @@ module.exports = {
     };
   },
 
-  // ======== PHẦN BẠN ĐÃ CÓ (dailyattendance) =========
+  // ================= FIX QUAN TRỌNG Ở ĐÂY =================
+  // dailyattendance + JOIN attendancelogs để lấy giờ vào / ra
   async getEmployeeMonthDetail({ employeeId, month, year }) {
-    const [days] = await pool.query(
+    const [rows] = await pool.query(
       `
-      SELECT id, employeeId, date, status, hoursWorked, notes
-      FROM dailyattendance
-      WHERE employeeId=?
-        AND MONTH(date)=?
-        AND YEAR(date)=?
-      ORDER BY date
-    `,
+      SELECT
+        da.id,
+        da.employeeId,
+        da.date,
+        da.status,
+        da.hoursWorked,
+        da.notes,
+        al.checkInAt,
+        al.checkOutAt,
+        al.workedMinutes
+      FROM dailyattendance da
+      LEFT JOIN attendancelogs al
+        ON da.employeeId = al.employeeId
+       AND da.date = al.workDate
+      WHERE da.employeeId=?
+        AND MONTH(da.date)=?
+        AND YEAR(da.date)=?
+      ORDER BY da.date
+      `,
       [employeeId, month, year]
     );
 
     const summary = {
-      totalPresentDays: days.filter((d) => d.status === "PRESENT").length,
-      totalAbsentDays: days.filter((d) => d.status === "ABSENT").length,
-      totalLeaveDays: days.filter((d) => d.status === "LEAVE").length,
+      totalPresentDays: rows.filter(r => r.status === "PRESENT").length,
+      totalAbsentDays: rows.filter(r => r.status === "ABSENT").length,
+      totalLeaveDays: rows.filter(r => r.status === "LEAVE").length,
     };
 
-    return { summary, days };
+    return { summary, days: rows };
   },
 
   async updateDaily({ id, payload }) {

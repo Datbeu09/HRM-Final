@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatVND, labelMonth } from "./payrollUtils";
-import Pagination from "../common/Pagination"; // ⚠️ sửa path đúng nơi bạn đặt Pagination
+import Pagination from "../common/Pagination";
 
 function EmptyState() {
   return (
@@ -27,11 +27,9 @@ export default function PayrollEmployeeTable({
 }) {
   const navigate = useNavigate();
 
-  // ✅ paging state
   const [page, setPage] = useState(1);
   const pageSize = 6;
 
-  // ✅ reset về trang 1 khi đổi filter/search/sort hoặc đổi dữ liệu
   useEffect(() => {
     setPage(1);
   }, [month, loading, rows, filtered.length]);
@@ -40,7 +38,6 @@ export default function PayrollEmployeeTable({
     return Math.max(1, Math.ceil((filtered?.length || 0) / pageSize));
   }, [filtered, pageSize]);
 
-  // ✅ nếu page vượt totalPages (khi filter làm giảm số lượng) thì kéo về
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
@@ -71,7 +68,7 @@ export default function PayrollEmployeeTable({
         </span>
       </div>
 
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto max-w-full"> {/* Đảm bảo bảng có thể cuộn khi quá rộng */}
         <table className="min-w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr className="border-b border-border">
@@ -89,19 +86,20 @@ export default function PayrollEmployeeTable({
               <th className="px-6 py-4 text-right font-semibold bg-primary/5 text-primary whitespace-nowrap">
                 Thực nhận
               </th>
+              <th className="px-6 py-4 text-left font-semibold whitespace-nowrap">Trạng thái</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-border">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-6 py-10 text-slate-500">
+                <td colSpan={9} className="px-6 py-10 text-slate-500">
                   Đang tải dữ liệu...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-10">
+                <td colSpan={9} className="px-6 py-10">
                   <EmptyState />
                 </td>
               </tr>
@@ -144,6 +142,10 @@ export default function PayrollEmployeeTable({
                   <td className="px-6 py-4 text-right font-extrabold text-primary bg-primary/5 tabular-nums whitespace-nowrap">
                     {formatVND(r.netSalary ?? 0)}
                   </td>
+
+                  <td className="px-6 py-4 text-left font-semibold text-slate-500 whitespace-nowrap">
+                    {r.status === "approved" ? "Đã duyệt" : "Chờ duyệt"}
+                  </td>
                 </tr>
               ))
             )}
@@ -151,7 +153,7 @@ export default function PayrollEmployeeTable({
         </table>
       </div>
 
-      {/* ✅ Pagination */}
+      {/* Pagination */}
       {!loading && filtered.length > 0 ? (
         <div className="px-6 pb-5">
           <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
@@ -160,3 +162,4 @@ export default function PayrollEmployeeTable({
     </section>
   );
 }
+

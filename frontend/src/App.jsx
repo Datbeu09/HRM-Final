@@ -33,6 +33,7 @@ import FinanceDashboard from "./pages/FinanceDashboard";
 import PayrollApprovalPage from "./pages/Payroll/PayrollApprovalPage";
 import PayrollDetail from "./pages/Payroll/PayrollDetail";
 import TaxAndDeduction from "./pages/AccountantPages/TaxAndDeduction";
+import Profile from "./pages/EmployeesPages/Profile";
 
 
 export default function App() {
@@ -54,7 +55,7 @@ export default function App() {
                 <Route element={<ProtectedRoute permissions="EMPLOYEE_VIEW" />}>
                   <Route path="/employees" element={<Employees />} />
                   <Route path="/employees/:id" element={<EmployeesDetail />} />
-                  <Route path="/profile/:id" element={<EmployeesDetail />} />
+                  <Route path="/profile/:id" element={<Profile />} />
                 </Route>
 
                 {/* tasks */}

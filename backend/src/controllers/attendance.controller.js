@@ -52,11 +52,13 @@ exports.getMonthlySummary = async (req, res, next) => {
 exports.getEmployeeMonthDetail = async (req, res, next) => {
   try {
     const { employeeId, month, year } = req.query;
+
     const data = await service.getEmployeeMonthDetail({
-      employeeId: +employeeId,
-      month: +month,
-      year: +year,
+      employeeId: Number(employeeId),
+      month: Number(month),
+      year: Number(year),
     });
+
     res.json({ success: true, data });
   } catch (e) {
     next(e);
@@ -66,9 +68,8 @@ exports.getEmployeeMonthDetail = async (req, res, next) => {
 exports.updateDaily = async (req, res, next) => {
   try {
     const data = await service.updateDaily({
-      id: +req.params.id,
+      id: Number(req.params.id),
       payload: req.body,
-      user: req.user,
     });
     res.json({ success: true, data });
   } catch (e) {

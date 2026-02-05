@@ -29,12 +29,17 @@ export default function AttendanceDetailTable({
   onPage,
   onEditNote,
 }) {
-  const shown = useMemo(() => Math.min(totalDays, page * pageSize), [totalDays, page, pageSize]);
+  const shown = useMemo(
+    () => Math.min(totalDays, page * pageSize),
+    [totalDays, page, pageSize]
+  );
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-        <h3 className="font-bold text-slate-900 dark:text-white">Danh sách chấm công chi tiết</h3>
+        <h3 className="font-bold text-slate-900 dark:text-white">
+          Danh sách chấm công chi tiết
+        </h3>
         <Legend />
       </div>
 
@@ -69,15 +74,31 @@ export default function AttendanceDetailTable({
               rows.map((r) => {
                 const checkIn = fmtTime(r.checkInAt);
                 const checkOut = fmtTime(r.checkOutAt);
-                const totalLabel = fmtMinutes(r.workedMinutes);
+
+                // 🔥 FIX QUAN TRỌNG Ở ĐÂY
+                const workedMinutes = Number(r.hoursWorked || 0) * 60;
+                const totalLabel = fmtMinutes(workedMinutes);
 
                 return (
-                  <tr key={r.dateStr} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                    <td className="px-5 py-3 font-semibold text-slate-900 dark:text-slate-100">{r.dateLabel}</td>
-                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">{r.weekday}</td>
-                    <td className="px-5 py-3 font-semibold text-slate-700 dark:text-slate-200">{checkIn}</td>
-                    <td className="px-5 py-3 font-semibold text-slate-700 dark:text-slate-200">{checkOut}</td>
-                    <td className="px-5 py-3 text-slate-700 dark:text-slate-200">{totalLabel}</td>
+                  <tr
+                    key={r.dateStr}
+                    className="hover:bg-slate-50 dark:hover:bg-slate-800/30"
+                  >
+                    <td className="px-5 py-3 font-semibold text-slate-900 dark:text-slate-100">
+                      {r.dateLabel}
+                    </td>
+                    <td className="px-5 py-3 text-slate-500 dark:text-slate-400">
+                      {r.weekday}
+                    </td>
+                    <td className="px-5 py-3 font-semibold text-slate-700 dark:text-slate-200">
+                      {checkIn}
+                    </td>
+                    <td className="px-5 py-3 font-semibold text-slate-700 dark:text-slate-200">
+                      {checkOut}
+                    </td>
+                    <td className="px-5 py-3 text-slate-700 dark:text-slate-200">
+                      {totalLabel}
+                    </td>
 
                     <td className="px-5 py-3">
                       <ATDStatusBadge status={r.status} />
@@ -86,11 +107,11 @@ export default function AttendanceDetailTable({
                     <td className="px-5 py-3 text-right">
                       {r.id ? (
                         <button
-                          onClick={() => onEditNote(r.id, r.note)}
+                          onClick={() => onEditNote(r.id, r.notes)}
                           className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 italic"
                           title="Chỉnh sửa ghi chú"
                         >
-                          {r.note ? r.note : "--"}
+                          {r.notes ? r.notes : "--"}
                         </button>
                       ) : (
                         <span className="text-slate-300 italic">--</span>
@@ -106,7 +127,8 @@ export default function AttendanceDetailTable({
 
       <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/30 flex items-center justify-between">
         <p className="text-xs text-slate-500">
-          Hiển thị {shown}/{totalDays} ngày trong tháng {String(month || "").padStart(2, "0")}
+          Hiển thị {shown}/{totalDays} ngày trong tháng{" "}
+          {String(month || "").padStart(2, "0")}
         </p>
 
         <div className="flex items-center gap-1">
@@ -115,7 +137,9 @@ export default function AttendanceDetailTable({
             disabled={page <= 1}
             className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 grid place-items-center disabled:opacity-40 hover:bg-slate-50"
           >
-            <span className="material-icons-round text-[18px] text-slate-500">chevron_left</span>
+            <span className="material-icons-round text-[18px] text-slate-500">
+              chevron_left
+            </span>
           </button>
 
           {Array.from({ length: totalPages }).slice(0, 5).map((_, i) => {
@@ -142,7 +166,9 @@ export default function AttendanceDetailTable({
             disabled={page >= totalPages}
             className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 grid place-items-center disabled:opacity-40 hover:bg-slate-50"
           >
-            <span className="material-icons-round text-[18px] text-slate-500">chevron_right</span>
+            <span className="material-icons-round text-[18px] text-slate-500">
+              chevron_right
+            </span>
           </button>
         </div>
       </div>

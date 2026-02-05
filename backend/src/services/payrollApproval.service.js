@@ -1,6 +1,7 @@
 // src/services/payrollApproval.service.js
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
+const ExcelJS = require("exceljs");
 
 /* ================= Helpers ================= */
 
@@ -17,26 +18,29 @@ function parseMonthYear(monthStr) {
   return { month, year, monthStr: `${year}-${String(month).padStart(2, "0")}` };
 }
 
-function toInt01(v) {
-  return v ? 1 : 0;
-}
-
 function normStr(v) {
   return String(v ?? "").trim();
 }
-
 function hasText(v) {
   return normStr(v).length > 0;
 }
 
-// robust filter department
-function buildDepartmentWhere({ department }) {
-  if (!hasText(department)) return { where: "", params: [] };
+function normalizeDepartmentId(v) {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v === "object") return null;
+  const n = Number(String(v).trim());
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
 
-  // so khớp chuẩn: TRIM + LOWER
+function buildDepartmentWhere({ department }) {
+  const depId = normalizeDepartmentId(department);
+  if (!depId) return { where: "", params: [], depId: null };
+
   return {
-    where: " AND LOWER(TRIM(e.department)) = LOWER(TRIM(?)) ",
-    params: [normStr(department)],
+    where: " AND e.departmentId = ? ",
+    params: [depId],
+    depId,
   };
 }
 
@@ -44,10 +48,61 @@ function safeNumber(n) {
   const v = Number(n ?? 0);
   return Number.isFinite(v) ? v : 0;
 }
-
 function calcGross(row) {
-  // gross = base + totalAllowances
   return safeNumber(row.baseSalary) + safeNumber(row.totalAllowances);
+}
+function toInt01(v) {
+  return v ? 1 : 0;
+}
+
+/* ================= Core fetch (shared) ================= */
+
+async function fetchApprovalRows({ monthStr, department }) {
+  const { month, year } = parseMonthYear(monthStr);
+  const dep = buildDepartmentWhere({ department });
+
+  const params = [month, year, ...dep.params];
+
+  const [rows] = await pool.query(
+    `
+    SELECT
+      e.id AS employeeId,
+      e.employeeCode,
+      e.name,
+      e.departmentId,
+      d.departmentName AS departmentName,
+
+      ms.id,
+      ms.employeeType,
+      ms.salaryGradeId,
+      ms.applicableRate,
+      ms.baseSalary,
+      ms.totalAllowances,
+      ms.totalInsurance,
+      ms.agreedSalary,
+      ms.totalDaysWorked,
+      ms.netSalary,
+      ms.locked,
+      ms.status,
+      ms.approvedByAccountId,
+      ms.approvedAt,
+      ms.created_at,
+      ms.updated_at
+    FROM employees e
+    LEFT JOIN departments d
+      ON d.id = e.departmentId
+    LEFT JOIN monthlysalary ms
+      ON ms.employeeId = e.id
+     AND ms.month = ?
+     AND ms.year = ?
+    WHERE 1=1
+      ${dep.where}
+    ORDER BY e.employeeCode ASC
+    `,
+    params
+  );
+
+  return { rows: rows || [], month, year, depId: dep.depId };
 }
 
 /* ================= Service ================= */
@@ -55,54 +110,8 @@ function calcGross(row) {
 module.exports = {
   parseMonthYear,
 
-  /**
-   * GET Payroll Approval (FULL nhân viên theo phòng ban)
-   * - Luôn trả danh sách employee theo department
-   * - LEFT JOIN monthlysalary theo month/year
-   * - Nếu chưa có lương => status = "Missing", các số = 0
-   */
   async getPayrollApproval({ monthStr, department }) {
-    const { month, year } = parseMonthYear(monthStr);
-    const dep = buildDepartmentWhere({ department });
-
-    const params = [month, year, ...dep.params];
-
-    // ✅ Luôn lấy full employee trước, rồi LEFT JOIN monthlysalary
-    const [rows] = await pool.query(
-      `
-      SELECT
-        e.id AS employeeId,
-        e.employeeCode,
-        e.name,
-        e.department,
-
-        ms.id,
-        ms.employeeType,
-        ms.salaryGradeId,
-        ms.applicableRate,
-        ms.baseSalary,
-        ms.totalAllowances,
-        ms.totalInsurance,
-        ms.agreedSalary,
-        ms.totalDaysWorked,
-        ms.netSalary,
-        ms.locked,
-        ms.status,
-        ms.approvedByAccountId,
-        ms.approvedAt,
-        ms.created_at,
-        ms.updated_at
-      FROM employees e
-      LEFT JOIN monthlysalary ms
-        ON ms.employeeId = e.id
-       AND ms.month = ?
-       AND ms.year = ?
-      WHERE 1=1
-        ${dep.where}
-      ORDER BY e.employeeCode ASC
-      `,
-      params
-    );
+    const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
 
     // KPI
     let gross = 0;
@@ -110,10 +119,8 @@ module.exports = {
     let net = 0;
 
     for (const r of rows) {
-      // chỉ cộng KPI cho người có monthlysalary
       if (r.id != null) {
-        const g = calcGross(r);
-        gross += g;
+        gross += calcGross(r);
         ins += safeNumber(r.totalInsurance);
         net += safeNumber(r.netSalary);
       }
@@ -122,7 +129,7 @@ module.exports = {
     let tax = gross - net - ins;
     if (tax < 0) tax = 0;
 
-    const employees = (rows || []).map((r) => {
+    const employees = rows.map((r) => {
       const hasSalary = r.id != null;
 
       return {
@@ -130,7 +137,9 @@ module.exports = {
         employeeId: r.employeeId,
         employeeCode: r.employeeCode,
         name: r.name,
-        department: r.department,
+
+        departmentId: r.departmentId ?? null,
+        departmentName: r.departmentName ?? "N/A",
 
         employeeType: hasSalary ? (r.employeeType ?? null) : null,
         salaryGradeId: hasSalary ? (r.salaryGradeId ?? null) : null,
@@ -140,15 +149,13 @@ module.exports = {
         totalAllowances: hasSalary ? safeNumber(r.totalAllowances) : 0,
         totalInsurance: hasSalary ? safeNumber(r.totalInsurance) : 0,
 
-        agreedSalary: hasSalary ? safeNumber(r.agreedSalary) : 0, // giữ field cũ nếu FE cần
-        grossSalary: hasSalary ? calcGross(r) : 0, // ✅ field mới (chuẩn)
+        agreedSalary: hasSalary ? safeNumber(r.agreedSalary) : 0,
+        grossSalary: hasSalary ? calcGross(r) : 0,
 
         totalDaysWorked: hasSalary ? safeNumber(r.totalDaysWorked) : 0,
         netSalary: hasSalary ? safeNumber(r.netSalary) : 0,
 
         locked: toInt01(hasSalary ? r.locked : 0),
-
-        // ✅ Nếu chưa có bảng lương -> Missing
         status: hasSalary ? (r.status || "Pending") : "Missing",
 
         approvedByAccountId: hasSalary ? (r.approvedByAccountId ?? null) : null,
@@ -161,25 +168,19 @@ module.exports = {
     return {
       month,
       year,
-      department: hasText(department) ? normStr(department) : null,
+      departmentId: depId,
       kpi: { gross, tax, ins, net },
       employees,
       meta: {
         count: employees.length,
-        note: "FULL employees by department (LEFT JOIN monthlysalary). Missing rows included.",
+        note: "FULL employees by departmentId (LEFT JOIN monthlysalary). Missing rows included.",
       },
     };
   },
 
-  /**
-   * POST Auto-check
-   * - So sánh monthlysalary.totalDaysWorked vs monthlyattendance.totalDaysWorked
-   */
   async autoCheck({ monthStr, department }) {
     const { month, year } = parseMonthYear(monthStr);
     const dep = buildDepartmentWhere({ department });
-
-    const params = [month, year, ...dep.params];
 
     const [rows] = await pool.query(
       `
@@ -187,10 +188,12 @@ module.exports = {
         e.id AS employeeId,
         e.employeeCode,
         e.name,
-        e.department,
+        e.departmentId,
+        d.departmentName AS departmentName,
         ms.totalDaysWorked AS salaryDaysWorked,
         ma.totalDaysWorked AS attendanceDaysWorked
       FROM employees e
+      LEFT JOIN departments d ON d.id = e.departmentId
       LEFT JOIN monthlysalary ms
         ON ms.employeeId = e.id
        AND ms.month = ?
@@ -209,7 +212,6 @@ module.exports = {
     const details = (rows || []).map((r) => {
       const hasSalary = r.salaryDaysWorked !== null && r.salaryDaysWorked !== undefined;
 
-      // Nếu chưa có lương thì coi như không check sai
       if (!hasSalary) {
         return {
           employeeCode: r.employeeCode,
@@ -218,7 +220,8 @@ module.exports = {
           ok: true,
           note: "Chưa có monthlysalary (bỏ qua kiểm tra)",
           salaryDaysWorked: null,
-          attendanceDaysWorked: r.attendanceDaysWorked === null ? null : safeNumber(r.attendanceDaysWorked),
+          attendanceDaysWorked:
+            r.attendanceDaysWorked === null ? null : safeNumber(r.attendanceDaysWorked),
         };
       }
 
@@ -252,7 +255,7 @@ module.exports = {
     return {
       month,
       year,
-      department: hasText(department) ? normStr(department) : null,
+      departmentId: dep.depId,
       allOk,
       summary: {
         total: details.length,
@@ -263,9 +266,6 @@ module.exports = {
     };
   },
 
-  /**
-   * POST Approve
-   */
   async approve({ monthStr, department, approvedByAccountId }) {
     const { month, year } = parseMonthYear(monthStr);
     if (!approvedByAccountId) throw new ApiError(400, "approvedByAccountId is required");
@@ -292,12 +292,8 @@ module.exports = {
     return { updated: result.affectedRows };
   },
 
-  /**
-   * POST Request Edit
-   */
   async requestEdit({ monthStr, department, employeeId, reason, createdByAccountId }) {
     const { month, year, monthStr: monthKey } = parseMonthYear(monthStr);
-
     if (!hasText(reason)) throw new ApiError(400, "reason is required");
 
     const depPart = hasText(department) ? `|${normStr(department)}` : "";
@@ -324,5 +320,112 @@ module.exports = {
     );
 
     return { id: ins.insertId, month, year };
+  },
+
+  /**
+   * Gửi phiếu lương qua email (bản hoàn chỉnh "không phá hệ thống")
+   * - Lấy danh sách nhân viên + email từ bảng employees
+   * - Trả về thống kê; phần gửi mail thật bạn có thể gắn mailer vào sau
+   */
+  async sendPayrollEmail({ monthStr, department, byAccountId }) {
+    const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
+
+    // lấy email từ employees: (rows đang có e.* đã select email chưa => chưa)
+    // => query lại tối giản email theo employeeId
+    const employeeIds = rows.map((r) => r.employeeId);
+    if (employeeIds.length === 0) {
+      return { ok: true, sent: 0, skipped: 0, month, year, departmentId: depId };
+    }
+
+    const [emails] = await pool.query(
+      `SELECT id AS employeeId, email FROM employees WHERE id IN (${employeeIds.map(() => "?").join(",")})`,
+      employeeIds
+    );
+
+    const emailMap = new Map((emails || []).map((x) => [x.employeeId, x.email]));
+
+    let sent = 0;
+    let skipped = 0;
+
+    // ✅ Hook mailer tại đây nếu bạn có nodemailer
+    // for (const r of rows) { ... send mail ... }
+
+    for (const r of rows) {
+      const mail = normStr(emailMap.get(r.employeeId));
+      if (!mail) {
+        skipped++;
+        continue;
+      }
+      // giả lập gửi thành công
+      sent++;
+    }
+
+    return {
+      ok: true,
+      month,
+      year,
+      departmentId: depId,
+      byAccountId: byAccountId ?? null,
+      sent,
+      skipped,
+      note: "Email sending stubbed. Plug your mailer here to actually send.",
+    };
+  },
+
+  /**
+   * Export Excel chuẩn .xlsx bằng exceljs
+   */
+  async exportPayrollToExcel({ monthStr, department }) {
+    const data = await this.getPayrollApproval({ monthStr, department });
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Payroll");
+
+    ws.columns = [
+      { header: "Mã NV", key: "employeeCode", width: 14 },
+      { header: "Họ tên", key: "name", width: 26 },
+      { header: "Phòng ban", key: "departmentName", width: 20 },
+      { header: "Base", key: "baseSalary", width: 14 },
+      { header: "Allowance", key: "totalAllowances", width: 14 },
+      { header: "Insurance", key: "totalInsurance", width: 14 },
+      { header: "Gross", key: "grossSalary", width: 14 },
+      { header: "Net", key: "netSalary", width: 14 },
+      { header: "Status", key: "status", width: 12 },
+    ];
+
+    (data.employees || []).forEach((e) => {
+      ws.addRow({
+        employeeCode: e.employeeCode,
+        name: e.name,
+        departmentName: e.departmentName || "N/A",
+        baseSalary: e.baseSalary,
+        totalAllowances: e.totalAllowances,
+        totalInsurance: e.totalInsurance,
+        grossSalary: e.grossSalary,
+        netSalary: e.netSalary,
+        status: e.status,
+      });
+    });
+
+    ws.addRow([]);
+    ws.addRow({
+      employeeCode: "KPI",
+      name: "",
+      departmentName: "",
+      baseSalary: "",
+      totalAllowances: "",
+      totalInsurance: data.kpi.ins,
+      grossSalary: data.kpi.gross,
+      netSalary: data.kpi.net,
+      status: "TAX=" + data.kpi.tax,
+    });
+
+    // format header
+    ws.getRow(1).font = { bold: true };
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const filename = `payroll_${monthStr}${data.departmentId ? `_dep${data.departmentId}` : ""}.xlsx`;
+
+    return { buffer, filename };
   },
 };
