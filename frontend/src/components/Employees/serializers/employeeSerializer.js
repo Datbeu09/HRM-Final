@@ -1,5 +1,5 @@
 // serializers/employeeSerializer.js
-import { normalizeDate, toDateInput } from "../helpers/date.js";
+import { normalizeDate, toDateInput } from "../helpers/date";
 import {
   normalizeContractTypeLabel,
   mapGenderToBackend,

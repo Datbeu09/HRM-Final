@@ -29,7 +29,10 @@ router.use("/monthlyAttendance", require("./monthlyAttendance.routes"));
 router.use("/monthlySalary", require("./monthlySalary.routes"));
 router.use("/payroll-approval", require("./payrollApproval.routes"));
 router.use("/payroll-detail", require("./payrollDetail.routes"));
-
+router.use("/leave-requests", require("./leaveRequest.routes"));
+router.use("/monthly-salary-details", require("./monthlySalaryDetail.routes"));
+router.use("/salary-payment-batches",require("./salaryPaymentBatch.routes"));
+router.use("/salary-payments",require("./salaryPayment.routes"));
 
 
 

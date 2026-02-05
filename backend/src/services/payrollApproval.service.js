@@ -48,9 +48,11 @@ function safeNumber(n) {
   const v = Number(n ?? 0);
   return Number.isFinite(v) ? v : 0;
 }
+
 function calcGross(row) {
   return safeNumber(row.baseSalary) + safeNumber(row.totalAllowances);
 }
+
 function toInt01(v) {
   return v ? 1 : 0;
 }
@@ -105,6 +107,74 @@ async function fetchApprovalRows({ monthStr, department }) {
   return { rows: rows || [], month, year, depId: dep.depId };
 }
 
+/* ================= Build response object ================= */
+
+function buildApprovalResponse({ rows, month, year, depId }) {
+  // KPI
+  let gross = 0;
+  let ins = 0;
+  let net = 0;
+
+  for (const r of rows) {
+    if (r.id != null) {
+      gross += calcGross(r);
+      ins += safeNumber(r.totalInsurance);
+      net += safeNumber(r.netSalary);
+    }
+  }
+
+  let tax = gross - net - ins;
+  if (tax < 0) tax = 0;
+
+  const employees = rows.map((r) => {
+    const hasSalary = r.id != null;
+
+    return {
+      id: hasSalary ? r.id : null, // monthlysalary id
+      employeeId: r.employeeId,
+      employeeCode: r.employeeCode,
+      name: r.name,
+
+      departmentId: r.departmentId ?? null,
+      departmentName: r.departmentName ?? "N/A",
+
+      employeeType: hasSalary ? (r.employeeType ?? null) : null,
+      salaryGradeId: hasSalary ? (r.salaryGradeId ?? null) : null,
+      applicableRate: hasSalary ? (r.applicableRate ?? null) : null,
+
+      baseSalary: hasSalary ? safeNumber(r.baseSalary) : 0,
+      totalAllowances: hasSalary ? safeNumber(r.totalAllowances) : 0,
+      totalInsurance: hasSalary ? safeNumber(r.totalInsurance) : 0,
+
+      agreedSalary: hasSalary ? safeNumber(r.agreedSalary) : 0,
+      grossSalary: hasSalary ? calcGross(r) : 0,
+
+      totalDaysWorked: hasSalary ? safeNumber(r.totalDaysWorked) : 0,
+      netSalary: hasSalary ? safeNumber(r.netSalary) : 0,
+
+      locked: toInt01(hasSalary ? r.locked : 0),
+      status: hasSalary ? (r.status || "Pending") : "Missing",
+
+      approvedByAccountId: hasSalary ? (r.approvedByAccountId ?? null) : null,
+      approvedAt: hasSalary ? (r.approvedAt ?? null) : null,
+      created_at: hasSalary ? (r.created_at ?? null) : null,
+      updated_at: hasSalary ? (r.updated_at ?? null) : null,
+    };
+  });
+
+  return {
+    month,
+    year,
+    departmentId: depId,
+    kpi: { gross, tax, ins, net },
+    employees,
+    meta: {
+      count: employees.length,
+      note: "FULL employees by departmentId (LEFT JOIN monthlysalary). Missing rows included.",
+    },
+  };
+}
+
 /* ================= Service ================= */
 
 module.exports = {
@@ -112,70 +182,7 @@ module.exports = {
 
   async getPayrollApproval({ monthStr, department }) {
     const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
-
-    // KPI
-    let gross = 0;
-    let ins = 0;
-    let net = 0;
-
-    for (const r of rows) {
-      if (r.id != null) {
-        gross += calcGross(r);
-        ins += safeNumber(r.totalInsurance);
-        net += safeNumber(r.netSalary);
-      }
-    }
-
-    let tax = gross - net - ins;
-    if (tax < 0) tax = 0;
-
-    const employees = rows.map((r) => {
-      const hasSalary = r.id != null;
-
-      return {
-        id: hasSalary ? r.id : null, // monthlysalary id
-        employeeId: r.employeeId,
-        employeeCode: r.employeeCode,
-        name: r.name,
-
-        departmentId: r.departmentId ?? null,
-        departmentName: r.departmentName ?? "N/A",
-
-        employeeType: hasSalary ? (r.employeeType ?? null) : null,
-        salaryGradeId: hasSalary ? (r.salaryGradeId ?? null) : null,
-        applicableRate: hasSalary ? (r.applicableRate ?? null) : null,
-
-        baseSalary: hasSalary ? safeNumber(r.baseSalary) : 0,
-        totalAllowances: hasSalary ? safeNumber(r.totalAllowances) : 0,
-        totalInsurance: hasSalary ? safeNumber(r.totalInsurance) : 0,
-
-        agreedSalary: hasSalary ? safeNumber(r.agreedSalary) : 0,
-        grossSalary: hasSalary ? calcGross(r) : 0,
-
-        totalDaysWorked: hasSalary ? safeNumber(r.totalDaysWorked) : 0,
-        netSalary: hasSalary ? safeNumber(r.netSalary) : 0,
-
-        locked: toInt01(hasSalary ? r.locked : 0),
-        status: hasSalary ? (r.status || "Pending") : "Missing",
-
-        approvedByAccountId: hasSalary ? (r.approvedByAccountId ?? null) : null,
-        approvedAt: hasSalary ? (r.approvedAt ?? null) : null,
-        created_at: hasSalary ? (r.created_at ?? null) : null,
-        updated_at: hasSalary ? (r.updated_at ?? null) : null,
-      };
-    });
-
-    return {
-      month,
-      year,
-      departmentId: depId,
-      kpi: { gross, tax, ins, net },
-      employees,
-      meta: {
-        count: employees.length,
-        note: "FULL employees by departmentId (LEFT JOIN monthlysalary). Missing rows included.",
-      },
-    };
+    return buildApprovalResponse({ rows, month, year, depId });
   },
 
   async autoCheck({ monthStr, department }) {
@@ -296,7 +303,8 @@ module.exports = {
     const { month, year, monthStr: monthKey } = parseMonthYear(monthStr);
     if (!hasText(reason)) throw new ApiError(400, "reason is required");
 
-    const depPart = hasText(department) ? `|${normStr(department)}` : "";
+    // department giờ là departmentId => log lại theo id cho rõ
+    const depPart = hasText(department) ? `|depId=${normStr(department)}` : "";
     const finalReason = `[${monthKey}${depPart}] ${normStr(reason)}`;
 
     const history = [
@@ -323,22 +331,20 @@ module.exports = {
   },
 
   /**
-   * Gửi phiếu lương qua email (bản hoàn chỉnh "không phá hệ thống")
-   * - Lấy danh sách nhân viên + email từ bảng employees
-   * - Trả về thống kê; phần gửi mail thật bạn có thể gắn mailer vào sau
+   * Gửi phiếu lương qua email (stub)
    */
   async sendPayrollEmail({ monthStr, department, byAccountId }) {
     const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
 
-    // lấy email từ employees: (rows đang có e.* đã select email chưa => chưa)
-    // => query lại tối giản email theo employeeId
-    const employeeIds = rows.map((r) => r.employeeId);
+    const employeeIds = (rows || []).map((r) => r.employeeId).filter(Boolean);
+
     if (employeeIds.length === 0) {
       return { ok: true, sent: 0, skipped: 0, month, year, departmentId: depId };
     }
 
+    const placeholders = employeeIds.map(() => "?").join(",");
     const [emails] = await pool.query(
-      `SELECT id AS employeeId, email FROM employees WHERE id IN (${employeeIds.map(() => "?").join(",")})`,
+      `SELECT id AS employeeId, email FROM employees WHERE id IN (${placeholders})`,
       employeeIds
     );
 
@@ -347,16 +353,13 @@ module.exports = {
     let sent = 0;
     let skipped = 0;
 
-    // ✅ Hook mailer tại đây nếu bạn có nodemailer
-    // for (const r of rows) { ... send mail ... }
-
     for (const r of rows) {
       const mail = normStr(emailMap.get(r.employeeId));
       if (!mail) {
         skipped++;
         continue;
       }
-      // giả lập gửi thành công
+      // TODO: gắn mailer tại đây
       sent++;
     }
 
@@ -374,9 +377,11 @@ module.exports = {
 
   /**
    * Export Excel chuẩn .xlsx bằng exceljs
+   * ✅ FIX: không dùng `this.getPayrollApproval` để tránh lỗi context
    */
   async exportPayrollToExcel({ monthStr, department }) {
-    const data = await this.getPayrollApproval({ monthStr, department });
+    const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
+    const data = buildApprovalResponse({ rows, month, year, depId });
 
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Payroll");
@@ -390,7 +395,7 @@ module.exports = {
       { header: "Insurance", key: "totalInsurance", width: 14 },
       { header: "Gross", key: "grossSalary", width: 14 },
       { header: "Net", key: "netSalary", width: 14 },
-      { header: "Status", key: "status", width: 12 },
+      { header: "Status", key: "status", width: 14 },
     ];
 
     (data.employees || []).forEach((e) => {
@@ -420,7 +425,6 @@ module.exports = {
       status: "TAX=" + data.kpi.tax,
     });
 
-    // format header
     ws.getRow(1).font = { bold: true };
 
     const buffer = await wb.xlsx.writeBuffer();

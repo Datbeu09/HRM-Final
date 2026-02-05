@@ -1,3 +1,4 @@
+// src/pages/.../FinanceApprovalPage.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   getPayrollApproval,
@@ -18,7 +19,7 @@ import { normalizeResponse } from "../../components/payroll/payrollUtils";
 export default function FinanceApprovalPage() {
   const [month, setMonth] = useState("2026-01");
   const [departments, setDepartments] = useState([]);
-  const [department, setDepartment] = useState(""); // departmentId (string/number)
+  const [department, setDepartment] = useState(""); // ✅ departmentId
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("net_desc");
 
@@ -35,6 +36,7 @@ export default function FinanceApprovalPage() {
     const fetchDepartments = async () => {
       try {
         const data = await getDepartments();
+        console.log("departments[0]:", data?.[0]); // ✅ DEBUG
         setDepartments(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error("[FE] Fetch departments failed", e);
@@ -55,6 +57,10 @@ export default function FinanceApprovalPage() {
       });
 
       const normalized = normalizeResponse(data);
+
+      // ✅ DEBUG TẠI ĐÂY
+      console.log("rows[0]:", normalized?.employees?.[0]);
+
       setKpi(normalized.kpi);
       setRows(normalized.employees);
       setCheckState(null);
@@ -72,7 +78,7 @@ export default function FinanceApprovalPage() {
     fetchData();
   }, [fetchData]);
 
-  // ===== Filter =====
+  // ===== Filter Search =====
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return (rows || []).filter(
@@ -97,10 +103,8 @@ export default function FinanceApprovalPage() {
   }, [error, checkState]);
 
   // ===== Actions =====
-
   const handleSendEmail = async () => {
     if (loading || submitting) return;
-
     setSubmitting(true);
     setError("");
     try {
@@ -116,11 +120,9 @@ export default function FinanceApprovalPage() {
 
   const handleExportFile = async () => {
     if (loading || submitting) return;
-
     setSubmitting(true);
     setError("");
     try {
-      // ✅ API export trả về Blob (responseType: "blob")
       const blob = await exportPayrollToExcel({
         month,
         department: department || undefined,
@@ -129,7 +131,6 @@ export default function FinanceApprovalPage() {
       if (!blob) throw new Error("Không nhận được file từ server.");
 
       const url = window.URL.createObjectURL(blob);
-
       const link = document.createElement("a");
       link.href = url;
 
@@ -139,7 +140,6 @@ export default function FinanceApprovalPage() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-
       window.URL.revokeObjectURL(url);
 
       alert("File Excel đã được xuất.");
@@ -150,9 +150,9 @@ export default function FinanceApprovalPage() {
       setSubmitting(false);
     }
   };
+
   const handleApprove = async () => {
     if (loading || submitting) return;
-
     setSubmitting(true);
     setError("");
     try {
@@ -174,8 +174,8 @@ export default function FinanceApprovalPage() {
           <PayrollHeaderControls
             month={month}
             setMonth={setMonth}
-            department={department}
-            setDepartment={setDepartment}
+            department={department}          // ✅ departmentId
+            setDepartment={setDepartment}    // ✅ set id
             departments={departments}
             onReload={fetchData}
             loading={loading}
@@ -203,6 +203,8 @@ export default function FinanceApprovalPage() {
             loading={loading}
             rows={rows}
             filtered={filtered}
+            department={department}     // ✅ departmentId
+            departments={departments}   // ✅ truyền list để map tên
             dataStatusLabel={dataStatusLabel}
             dotColorClass={dotColorClass}
           />

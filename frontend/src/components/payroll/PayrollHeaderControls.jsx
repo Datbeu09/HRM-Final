@@ -3,12 +3,9 @@ import React from "react";
 export default function PayrollHeaderControls({
   month,
   setMonth,
-  department,
+  department,      // ✅ departmentId (string/number)
   setDepartment,
-
-  // ✅ danh sách từ API /departments
   departments = [],
-
   onReload,
   loading,
   submitting,
@@ -29,22 +26,22 @@ export default function PayrollHeaderControls({
           />
         </label>
 
-        {/* ✅ Department select */}
+        {/* ✅ Department select: value = departmentId */}
         <label className="flex items-center gap-2 px-4 h-11 rounded-xl border border-border bg-white text-sm font-semibold text-slate-700">
           <span className="material-symbols-outlined text-[18px] text-slate-500">
             apartment
           </span>
 
           <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
+            value={String(department ?? "")}
+            onChange={(e) => setDepartment(e.target.value)} // giữ string cũng ok
             disabled={loading || submitting}
             className="bg-transparent outline-none text-sm w-[220px] disabled:opacity-60"
           >
             <option value="">Tất cả phòng ban</option>
 
             {departments.map((d) => (
-              <option key={d.id} value={d.departmentName}>
+              <option key={d.id} value={String(d.id)}>
                 {d.departmentName}
               </option>
             ))}

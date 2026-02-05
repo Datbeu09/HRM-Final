@@ -21,12 +21,39 @@ function StatCard({ icon, iconBg, iconColor, title, value }) {
   );
 }
 
-// ✅ format hiển thị
+// format hiển thị
 const formatUnit = (v) => {
   const n = Number(v);
   if (Number.isInteger(n)) return n;
   return n.toFixed(2).replace(/\.?0+$/, "");
 };
+
+// suy kind từ status tiếng Việt
+function inferKindFromStatus(status) {
+  const s = String(status || "").toLowerCase();
+
+  if (
+    s.includes("cuối tuần") ||
+    s.includes("weekend") ||
+    s.includes("chủ nhật") ||
+    s.includes("thứ bảy")
+  ) {
+    return "WEEKEND";
+  }
+
+  if (s.includes("nghỉ phép") || s.includes("leave")) {
+    return "LEAVE";
+  }
+
+  return "WORK";
+}
+
+// ✅ lấy workedMinutes linh hoạt: ưu tiên workedMinutes, fallback hoursWorked
+function getWorkedMinutes(d) {
+  if (d?.workedMinutes != null) return Number(d.workedMinutes || 0);
+  if (d?.hoursWorked != null) return Number(d.hoursWorked || 0) * 60;
+  return 0;
+}
 
 export default function SummaryCards({ days = [] }) {
   const { workDays, absentDays, leaveDays, otUnits } = useMemo(() => {
@@ -36,13 +63,15 @@ export default function SummaryCards({ days = [] }) {
     let otUnits = 0;
 
     days.forEach((d) => {
+      const kind = d.kind || inferKindFromStatus(d.status);
+
       // Nghỉ phép
-      if (d.kind === "LEAVE") {
+      if (kind === "LEAVE") {
         leaveDays++;
         return;
       }
 
-      const minutes = Number(d.workedMinutes || 0);
+      const minutes = getWorkedMinutes(d);
       const hours = minutes / 60;
 
       // OT (áp dụng cả ngày thường & cuối tuần)
@@ -52,15 +81,18 @@ export default function SummaryCards({ days = [] }) {
       }
 
       // Cuối tuần → không tính công chuẩn
-      if (d.kind === "WEEKEND") return;
+      if (kind === "WEEKEND") return;
 
-      // Công chuẩn
+      // ✅ Rule mới:
+      // - 8h = 1 công
+      // - 4h = 0.5 công (thiếu công)
+      // - 2 thiếu công tự nhiên = 1 công (vì 0.5 + 0.5 = 1) => KHÔNG cần gộp gì thêm
       if (minutes >= 480) {
         workDays += 1;
       } else if (minutes >= 240) {
-        workDays += 0.5;
+        workDays += 0.5; // 1 thiếu công = 0.5 công
       } else {
-        absentDays += 1;
+        absentDays += 1; // không công
       }
     });
 

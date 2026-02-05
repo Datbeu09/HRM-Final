@@ -103,7 +103,7 @@ module.exports = {
     }
   },
 
-  // POST /api/payroll-approval/export  (trả file excel)
+  // POST /api/payroll-approval/export
   async exportExcel(req, res, next) {
     try {
       let { month, department } = req.body || {};
@@ -114,7 +114,6 @@ module.exports = {
         department,
       });
 
-      // trả file excel
       res.setHeader(
         "Content-Type",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

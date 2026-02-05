@@ -1,29 +1,81 @@
 import React from "react";
 
+/**
+ * Đồng bộ màu theo Legend:
+ * - Có công: teal
+ * - Không công / thiếu công / vắng: rose
+ * - Nghỉ phép: amber
+ * - Cuối tuần: slate (neutral)
+ *
+ * Không fix cứng enum, chỉ dựa vào keyword trong text.
+ */
+
 function resolveBadge(kindOrStatus) {
-  const s = String(kindOrStatus || "").toLowerCase();
+  const raw = String(kindOrStatus || "").trim();
+  const s = raw.toLowerCase();
 
-  if (s.includes("weekend") || s.includes("chủ nhật")) {
-    return { text: "Cuối tuần", cls: "bg-slate-100 text-slate-700 border-slate-200" };
-  }
-  if (s.includes("present") || s.includes("đúng") || s.includes("làm")) {
-    return { text: "Có mặt", cls: "bg-green-100 text-green-700 border-green-200" };
-  }
-  if (s.includes("leave") || s.includes("nghỉ")) {
-    return { text: "Nghỉ phép", cls: "bg-slate-100 text-slate-700 border-slate-200" };
-  }
-  if (s.includes("absent") || s.includes("vắng")) {
-    return { text: "Vắng", cls: "bg-rose-100 text-rose-700 border-rose-200" };
+  // Cuối tuần
+  if (
+    s.includes("weekend") ||
+    s.includes("cuối tuần") ||
+    s.includes("chủ nhật") ||
+    s.includes("thứ bảy")
+  ) {
+    return {
+      text: raw || "Cuối tuần",
+      dot: "bg-slate-400",
+      cls: "bg-slate-50 text-slate-700 ring-slate-600/20",
+    };
   }
 
-  return { text: kindOrStatus || "—", cls: "bg-amber-100 text-amber-700 border-amber-200" };
+  // Nghỉ phép
+  if (s.includes("leave") || s.includes("nghỉ phép")) {
+    return {
+      text: raw || "Nghỉ phép",
+      dot: "bg-amber-500",
+      cls: "bg-amber-50 text-amber-700 ring-amber-600/20",
+    };
+  }
+
+  // Không công / Thiếu công / Vắng
+  if (
+    s.includes("absent") ||
+    s.includes("vắng") ||
+    s.includes("không công") ||
+    s.includes("thiếu công")
+  ) {
+    return {
+      text: raw || "Không công",
+      dot: "bg-rose-500",
+      cls: "bg-rose-50 text-rose-700 ring-rose-600/20",
+    };
+  }
+
+  // Mặc định coi là Có công (đúng giờ/đi muộn/về sớm/ca đêm/làm thêm giờ/...)
+  return {
+    text: raw || "Có công",
+    dot: "bg-teal-500",
+    cls: "bg-teal-50 text-teal-700 ring-teal-600/20",
+  };
 }
 
 export default function ATDStatusBadge({ kind, status }) {
-  const { text, cls } = resolveBadge(kind || status);
+  // ✅ ƯU TIÊN status tiếng Việt (giàu thông tin hơn), kind chỉ là fallback
+  const { text, cls, dot } = resolveBadge(status || kind);
+
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${cls}`}>
-      {text}
+    <span
+      className={`
+        inline-flex items-center gap-2
+        px-2.5 py-1 rounded-full
+        text-[11px] font-bold
+        ring-1 ${cls}
+        max-w-[170px]
+      `}
+      title={text}
+    >
+      <span className={`w-2 h-2 rounded-full ${dot}`} />
+      <span className="truncate">{text}</span>
     </span>
   );
 }
