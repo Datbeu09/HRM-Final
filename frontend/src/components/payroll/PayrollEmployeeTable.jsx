@@ -1,3 +1,4 @@
+// src/components/payroll/PayrollEmployeeTable.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatVND, labelMonth } from "./payrollUtils";
@@ -18,17 +19,21 @@ function EmptyState() {
 }
 
 function normalizeStatusLabel(status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "missing") return "Thiếu bảng lương";
-  if (s === "pending" || s === "chờ duyệt") return "Chờ duyệt";
-  if (s === "đã duyệt" || s === "approved") return "Đã duyệt";
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "missing" || s === "chưa có bảng lương") return "Thiếu bảng lương";
+  if (s === "pending" || s === "chờ duyệt" || s === "đang chờ duyệt")
+    return "Chờ duyệt";
+  if (s === "approved" || s === "đã duyệt") return "Đã duyệt";
+  if (s === "rejected" || s === "từ chối") return "Từ chối";
   return status || "N/A";
 }
 
 // ✅ giống EmployeeTable: find theo id và lấy departmentName
 function getDepartmentName(departments, departmentId) {
   if (!departmentId) return "N/A";
-  const dep = (departments || []).find((d) => String(d?.id) === String(departmentId));
+  const dep = (departments || []).find(
+    (d) => String(d?.id) === String(departmentId)
+  );
   return dep?.departmentName || "N/A";
 }
 
@@ -38,8 +43,10 @@ export default function PayrollEmployeeTable({
   rows,
   filtered,
 
-  // ✅ departmentId đang chọn từ HeaderControls
-  department,          // (đang truyền từ FinanceApprovalPage) => chính là departmentId
+  // ✅ departmentId đang chọn từ HeaderControls (PHẢI là id)
+  departmentId,
+
+  // ✅ list departments từ API
   departments = [],
 
   dataStatusLabel,
@@ -50,22 +57,19 @@ export default function PayrollEmployeeTable({
   const [page, setPage] = useState(1);
   const pageSize = 6;
 
-  // ✅ helper lấy departmentId từ row (ưu tiên field chuẩn, fallback raw)
-  const getRowDepartmentId = (r) => {
-    return r?.departmentId ?? r?.raw?.departmentId ?? null;
-  };
-
-  // ✅ filter theo departmentId
+  // ✅ Filter theo departmentId:
+  // Nếu row chưa có departmentId do shape lạ -> fallback r.raw.departmentId
   const finalRows = useMemo(() => {
-    if (!department) return filtered || [];
-    return (filtered || []).filter(
-      (r) => String(getRowDepartmentId(r) ?? "") === String(department)
-    );
-  }, [filtered, department]);
+    if (!departmentId) return filtered || [];
+    return (filtered || []).filter((r) => {
+      const rowDepId = r?.departmentId ?? r?.raw?.departmentId ?? null;
+      return String(rowDepId) === String(departmentId);
+    });
+  }, [filtered, departmentId]);
 
   useEffect(() => {
     setPage(1);
-  }, [month, loading, rows, finalRows.length, department]);
+  }, [month, loading, rows, finalRows.length, departmentId]);
 
   const totalPages = useMemo(() => {
     return Math.max(1, Math.ceil((finalRows?.length || 0) / pageSize));
@@ -81,8 +85,8 @@ export default function PayrollEmployeeTable({
   }, [finalRows, page, pageSize]);
 
   const selectedDeptName = useMemo(() => {
-    return department ? getDepartmentName(departments, department) : "";
-  }, [departments, department]);
+    return departmentId ? getDepartmentName(departments, departmentId) : "";
+  }, [departments, departmentId]);
 
   const handleRowClick = (r) => {
     if (!r?.employeeId) return;
@@ -96,7 +100,7 @@ export default function PayrollEmployeeTable({
           <h3 className="text-lg font-bold text-slate-900">Danh sách nhân viên</h3>
           <p className="text-sm text-slate-500">
             {loading ? "..." : finalRows.length} nhân viên • Tháng {labelMonth(month)}
-            {department ? ` • ${selectedDeptName}` : ""}
+            {departmentId ? ` • ${selectedDeptName}` : ""}
           </p>
         </div>
 
@@ -116,8 +120,12 @@ export default function PayrollEmployeeTable({
 
               <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">Lương cơ bản</th>
               <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">Ngày công</th>
-              <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">Phụ cấp</th>
-              <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">BH</th>
+              {/* <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">
+                Phụ cấp &amp; Thưởng
+              </th>
+              <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">
+                Khấu trừ (BH)
+              </th> */}
 
               <th className="px-6 py-4 text-right font-semibold bg-primary/5 text-primary whitespace-nowrap">
                 Thực nhận
@@ -141,22 +149,28 @@ export default function PayrollEmployeeTable({
               </tr>
             ) : (
               pagedRows.map((r) => {
-                const depId = getRowDepartmentId(r);
-                const departmentName = getDepartmentName(departments, depId);
+                const rowDepId = r?.departmentId ?? r?.raw?.departmentId ?? null;
 
-                // ⚠️ các field lương của bạn đang “bốc” khác nhau
-                // nếu r chỉ có netSalary, còn base/allowance nằm trong r.raw thì lấy fallback
-                const baseSalary = r.baseSalary ?? r.raw?.baseSalary ?? 0;
-                const daysWorked = r.totalDaysWorked ?? r.raw?.totalDaysWorked ?? 0;
-                const allowances = r.totalAllowances ?? r.raw?.totalAllowances ?? 0;
-                const insurance = r.totalInsurance ?? r.raw?.totalInsurance ?? 0;
-                const net = r.netSalary ?? r.raw?.netSalary ?? 0;
+                // Ưu tiên departmentName từ backend (JOIN departments) / normalizeEmployeeRow
+                // Nếu không có thì mới find từ list departments
+                const departmentName =
+                  r?.departmentName ||
+                  r?.raw?.departmentName ||
+                  getDepartmentName(departments, rowDepId);
+
+                // ✅ field fallback chắc chắn
+                const baseSalary = r?.baseSalary ?? r?.raw?.baseSalary ?? 0;
+                const daysWorked = r?.totalDaysWorked ?? r?.raw?.totalDaysWorked ?? 0;
+                const allowances = r?.totalAllowances ?? r?.raw?.totalAllowances ?? 0;
+                const insurance = r?.totalInsurance ?? r?.raw?.totalInsurance ?? 0;
+                const net = r?.netSalary ?? r?.raw?.netSalary ?? 0;
 
                 return (
                   <tr
                     key={r.employeeId || r.employeeCode}
                     onClick={() => handleRowClick(r)}
                     className="cursor-pointer transition hover:bg-primary/5 active:bg-primary/10"
+                    title="Xem chi tiết bảng lương nhân viên"
                   >
                     <td className="px-6 py-4 text-slate-500 whitespace-nowrap">
                       {r.employeeCode || "N/A"}
@@ -167,7 +181,7 @@ export default function PayrollEmployeeTable({
                     </td>
 
                     <td className="px-6 py-4 text-slate-600 whitespace-nowrap">
-                      {departmentName}
+                      {departmentName || "N/A"}
                     </td>
 
                     <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
@@ -178,20 +192,20 @@ export default function PayrollEmployeeTable({
                       {Number(daysWorked)}
                     </td>
 
-                    <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
+                    {/* <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
                       {formatVND(allowances)}
                     </td>
 
                     <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
                       {formatVND(insurance)}
-                    </td>
+                    </td> */}
 
                     <td className="px-6 py-4 text-right font-extrabold text-primary bg-primary/5 tabular-nums whitespace-nowrap">
                       {formatVND(net)}
                     </td>
 
                     <td className="px-6 py-4 text-left font-semibold text-slate-500 whitespace-nowrap">
-                      {normalizeStatusLabel(r.status ?? r.raw?.status)}
+                      {normalizeStatusLabel(r?.status ?? r?.raw?.status)}
                     </td>
                   </tr>
                 );

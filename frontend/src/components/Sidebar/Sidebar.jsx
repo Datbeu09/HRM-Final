@@ -132,20 +132,20 @@ export default function Sidebar() {
         label: "Duyệt bảng lương",
         permissionCode: "SALARY_APPROVE",
       },
-      {
-        path: "/tax-deduction",
-        icon: "request_quote",
-        label: "Thuế khấu trừ",
-        permissionCode: "TAX_DEDUCTION",
-      },
+      // {
+      //   path: "/tax-deduction",
+      //   icon: "request_quote",
+      //   label: "Thuế khấu trừ",
+      //   permissionCode: "TAX_DEDUCTION",
+      // },
 
       // Benefits / Insurance
-      {
-        path: "/benefits",
-        icon: "health_and_safety",
-        label: "Phúc lợi & Bảo hiểm",
-        permissionCode: "INSURANCE_BENEFIT",
-      },
+      // {
+      //   path: "/benefits",
+      //   icon: "health_and_safety",
+      //   label: "Phúc lợi & Bảo hiểm",
+      //   permissionCode: "INSURANCE_BENEFIT",
+      // },
 
       // Accounts / Permission
       {

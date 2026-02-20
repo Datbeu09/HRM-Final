@@ -1,4 +1,3 @@
-// src/pages/.../FinanceApprovalPage.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   getPayrollApproval,
@@ -19,7 +18,10 @@ import { normalizeResponse } from "../../components/payroll/payrollUtils";
 export default function FinanceApprovalPage() {
   const [month, setMonth] = useState("2026-01");
   const [departments, setDepartments] = useState([]);
-  const [department, setDepartment] = useState(""); // ✅ departmentId
+
+  // ✅ departmentId (number/string) — CHỌN THEO ID
+  const [departmentId, setDepartmentId] = useState("");
+
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("net_desc");
 
@@ -36,7 +38,6 @@ export default function FinanceApprovalPage() {
     const fetchDepartments = async () => {
       try {
         const data = await getDepartments();
-        console.log("departments[0]:", data?.[0]); // ✅ DEBUG
         setDepartments(Array.isArray(data) ? data : []);
       } catch (e) {
         console.error("[FE] Fetch departments failed", e);
@@ -46,6 +47,15 @@ export default function FinanceApprovalPage() {
     fetchDepartments();
   }, []);
 
+  // ✅ Debug đúng chỗ (sau khi departments / rows thay đổi)
+  useEffect(() => {
+    if (departments?.length) console.log("departments[0]:", departments?.[0]);
+  }, [departments]);
+
+  useEffect(() => {
+    if (rows?.length) console.log("rows[0]:", rows?.[0]);
+  }, [rows]);
+
   // ===== Fetch Payroll Approval Data =====
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -53,14 +63,11 @@ export default function FinanceApprovalPage() {
     try {
       const data = await getPayrollApproval({
         month,
-        department: department || undefined,
+        // ✅ gửi departmentId lên BE
+        department: departmentId || undefined,
       });
 
       const normalized = normalizeResponse(data);
-
-      // ✅ DEBUG TẠI ĐÂY
-      console.log("rows[0]:", normalized?.employees?.[0]);
-
       setKpi(normalized.kpi);
       setRows(normalized.employees);
       setCheckState(null);
@@ -72,13 +79,13 @@ export default function FinanceApprovalPage() {
     } finally {
       setLoading(false);
     }
-  }, [month, department]);
+  }, [month, departmentId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // ===== Filter Search =====
+  // ===== Filter search =====
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return (rows || []).filter(
@@ -108,7 +115,7 @@ export default function FinanceApprovalPage() {
     setSubmitting(true);
     setError("");
     try {
-      await sendPayrollEmail({ month, department: department || undefined });
+      await sendPayrollEmail({ month, department: departmentId || undefined });
       alert("Phiếu lương đã được gửi qua email.");
     } catch (e) {
       console.error(e);
@@ -125,7 +132,7 @@ export default function FinanceApprovalPage() {
     try {
       const blob = await exportPayrollToExcel({
         month,
-        department: department || undefined,
+        department: departmentId || undefined,
       });
 
       if (!blob) throw new Error("Không nhận được file từ server.");
@@ -134,14 +141,14 @@ export default function FinanceApprovalPage() {
       const link = document.createElement("a");
       link.href = url;
 
-      const depSuffix = department ? `_dep${department}` : "";
+      const depSuffix = departmentId ? `_dep${departmentId}` : "";
       link.download = `payroll_${month}${depSuffix}.xlsx`;
 
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(url);
 
+      window.URL.revokeObjectURL(url);
       alert("File Excel đã được xuất.");
     } catch (e) {
       console.error(e);
@@ -156,7 +163,7 @@ export default function FinanceApprovalPage() {
     setSubmitting(true);
     setError("");
     try {
-      await approvePayroll({ month, department: department || undefined });
+      await approvePayroll({ month, department: departmentId || undefined });
       await fetchData();
       alert("Bảng lương đã được chốt thành công.");
     } catch (e) {
@@ -174,8 +181,8 @@ export default function FinanceApprovalPage() {
           <PayrollHeaderControls
             month={month}
             setMonth={setMonth}
-            department={department}          // ✅ departmentId
-            setDepartment={setDepartment}    // ✅ set id
+            departmentId={departmentId}
+            setDepartmentId={setDepartmentId}
             departments={departments}
             onReload={fetchData}
             loading={loading}
@@ -203,8 +210,8 @@ export default function FinanceApprovalPage() {
             loading={loading}
             rows={rows}
             filtered={filtered}
-            department={department}     // ✅ departmentId
-            departments={departments}   // ✅ truyền list để map tên
+            departmentId={departmentId}
+            departments={departments}
             dataStatusLabel={dataStatusLabel}
             dotColorClass={dotColorClass}
           />

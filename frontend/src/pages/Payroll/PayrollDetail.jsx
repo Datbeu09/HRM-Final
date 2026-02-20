@@ -1,8 +1,14 @@
+// src/pages/accountant/PayrollDetail.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { getPayrollDetail } from "../../api/payrollDetail.api";
 
 /* ================= Helpers ================= */
+
+const toNum = (v) => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+};
 
 const formatVND = (n) => `${Number(n || 0).toLocaleString("vi-VN")} ₫`;
 
@@ -22,14 +28,15 @@ const statusBadge = (status) => {
     };
   }
 
-  if (s === "approved") {
+  // backend bạn đang dùng status = "Đã duyệt" hoặc "Pending" hoặc "Missing"
+  if (s === "approved" || s === "đã duyệt") {
     return {
       text: "Đã duyệt",
       cls: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800",
     };
   }
 
-  if (s === "rejected") {
+  if (s === "rejected" || s === "từ chối") {
     return {
       text: "Từ chối",
       cls: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800",
@@ -42,17 +49,18 @@ const statusBadge = (status) => {
   };
 };
 
-// normalize payload backend -> UI model (chịu nhiều shape)
+/**
+ * normalize payload backend -> UI model (chịu nhiều shape)
+ * ✅ FIX: totalIncome/gross + tax suy ra đúng, không bị agreedSalary nuốt mất phụ cấp
+ */
 function normalizeDetail(payload, monthStr) {
   const employee = payload?.employee || payload?.emp || {};
-  // payroll có thể null nếu backend cho phép (chưa tạo bảng lương)
-  const payrollRaw =
-    payload?.payroll ?? payload?.monthlySalary ?? payload?.salary ?? null;
+  const payrollRaw = payload?.payroll ?? payload?.monthlySalary ?? payload?.salary ?? null;
 
   const allowances = Array.isArray(payload?.allowances) ? payload.allowances : [];
   const attendance = payload?.attendance || payload?.monthlyAttendance || null;
 
-  // ===== Nếu chưa có payroll => vẫn trả model để render được UI =====
+  // ===== Nếu chưa có payroll => vẫn render được UI =====
   if (!payrollRaw) {
     return {
       employee: {
@@ -61,13 +69,13 @@ function normalizeDetail(payload, monthStr) {
         name: employee?.name || "",
         title: employee?.title || "",
         position: employee?.position || "",
-        department: employee?.department || "",
+        department: employee?.departmentName || employee?.department || "",
       },
       payroll: {
         month: monthStr || "",
         status: "Missing",
         locked: false,
-        totalDaysWorked: Number(attendance?.totalDaysWorked ?? 0),
+        totalDaysWorked: toNum(attendance?.totalDaysWorked ?? 0),
         netSalary: 0,
       },
       incomeItems: [],
@@ -80,21 +88,43 @@ function normalizeDetail(payload, monthStr) {
 
   const payroll = payrollRaw;
 
-  // Thu nhập
+  // ===== Thu nhập =====
   const incomeItems = [];
 
+  // 1) Lương cơ bản
+  const base = toNum(payroll.baseSalary ?? 0);
   incomeItems.push({
     key: "baseSalary",
     label: "Lương cơ bản",
-    value: Number(payroll.baseSalary ?? 0),
+    value: base,
   });
 
-  // allowances: nếu backend trả amount thì dùng amount, không thì dùng value
+  // 2) ✅ Tổng Phụ cấp & Thưởng
+  const sumAllowancesFromList = (allowances || []).reduce(
+    (acc, a) => acc + toNum(a?.amount ?? a?.value ?? 0),
+    0
+  );
+
+  const totalAllowancesField = toNum(payroll.totalAllowances ?? 0);
+  const allowanceTotalValue =
+    totalAllowancesField > 0 ? totalAllowancesField : sumAllowancesFromList;
+
+  incomeItems.push({
+    key: "allowanceBonus",
+    label: "Phụ cấp & Thưởng",
+    value: allowanceTotalValue,
+    sub:
+      totalAllowancesField > 0
+        ? "Theo monthlysalary.totalAllowances"
+        : "Suy ra từ danh sách allowances",
+  });
+
+  // 3) Chi tiết allowances (nếu có)
   for (const a of allowances) {
     incomeItems.push({
       key: `allow_${a.id || a.name || Math.random()}`,
       label: a.name || a.type || "Phụ cấp",
-      value: Number(a.amount ?? a.value ?? 0),
+      value: toNum(a.amount ?? a.value ?? 0),
       sub: a.applyByAttendance
         ? "Áp dụng theo chấm công"
         : a.calcType
@@ -103,16 +133,23 @@ function normalizeDetail(payload, monthStr) {
     });
   }
 
-  // totalIncome
-  const totalIncome =
-    Number(payroll.agreedSalary ?? 0) ||
-    (Number(payroll.baseSalary ?? 0) + Number(payroll.totalAllowances ?? 0));
+  // ===== ✅ FIX: Tổng thu nhập (Gross / Total income) =====
+  // Ưu tiên grossSalary nếu backend có, nếu không thì base + allowanceTotalValue.
+  // agreedSalary KHÔNG được phép “nuốt” allowances như trước.
+  const grossByParts = base + allowanceTotalValue;
+  const grossFromBackend = toNum(payroll.grossSalary ?? 0);
+  const agreed = toNum(payroll.agreedSalary ?? 0);
 
-  // Khấu trừ
-  const ins = Number(payroll.totalInsurance ?? 0);
-  const net = Number(payroll.netSalary ?? 0);
+  // totalIncome cuối: ưu tiên grossSalary nếu có; fallback base+allowances.
+  // Dùng Math.max để tránh trường hợp agreed/base nhỏ hơn grossByParts gây hụt như ảnh của bạn.
+  const totalIncome = Math.max(grossFromBackend || grossByParts, grossByParts, agreed);
 
-  let tax = Number(payroll.tax ?? 0);
+  // ===== Khấu trừ =====
+  const ins = toNum(payroll.totalInsurance ?? 0);
+  const net = toNum(payroll.netSalary ?? 0);
+
+  // tax: nếu backend có field tax thì dùng; nếu không suy ra
+  let tax = toNum(payroll.tax ?? 0);
   if (!tax) {
     tax = totalIncome - ins - net;
     if (tax < 0) tax = 0;
@@ -124,7 +161,7 @@ function normalizeDetail(payload, monthStr) {
       key: "tax",
       label: "Thuế TNCN",
       value: tax,
-      sub: "Tính suy ra (gross - ins - net) nếu chưa có field riêng",
+      sub: "Tính suy ra (totalIncome - ins - net) nếu chưa có field riêng",
     },
   ];
 
@@ -137,13 +174,13 @@ function normalizeDetail(payload, monthStr) {
       name: employee.name || "",
       title: employee.title || "",
       position: employee.position || "",
-      department: employee.department || "",
+      department: employee.departmentName || employee.department || "",
     },
     payroll: {
       month: monthStr || "",
       status: payroll.status || payload?.status || "Pending",
       locked: !!payroll.locked,
-      totalDaysWorked: Number(payroll.totalDaysWorked ?? attendance?.totalDaysWorked ?? 0),
+      totalDaysWorked: toNum(payroll.totalDaysWorked ?? attendance?.totalDaysWorked ?? 0),
       netSalary: net,
     },
     incomeItems,
@@ -166,10 +203,7 @@ export default function PayrollDetail() {
   const [error, setError] = useState("");
   const [model, setModel] = useState(null);
 
-  const badge = useMemo(
-    () => statusBadge(model?.payroll?.status),
-    [model?.payroll?.status]
-  );
+  const badge = useMemo(() => statusBadge(model?.payroll?.status), [model?.payroll?.status]);
 
   const fetchDetail = async () => {
     setLoading(true);
@@ -178,8 +212,8 @@ export default function PayrollDetail() {
     try {
       const data = await getPayrollDetail({ employeeId, month });
 
-      // data ở đây là payload (đã unwrap từ api file)
-      console.log("[FE] payroll-detail raw =", data);
+      // Nếu cần debug:
+      // console.log("[FE] payroll-detail raw =", data);
 
       const normalized = normalizeDetail(data, month);
       setModel(normalized);
@@ -195,7 +229,7 @@ export default function PayrollDetail() {
   useEffect(() => {
     if (!employeeId || !month) {
       setLoading(false);
-      setError("Thiếu employeeId hoặc month trên URL (vd: /payroll-detail/7?month=2026-05)");
+      setError("Thiếu employeeId hoặc month trên URL (vd: /accountant/payroll/7?month=2026-05)");
       return;
     }
     fetchDetail();
@@ -266,9 +300,7 @@ export default function PayrollDetail() {
             <span className="material-icons-round text-4xl">account_circle</span>
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {emp.name || "—"}
-            </h2>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{emp.name || "—"}</h2>
             <p className="text-gray-500 dark:text-gray-400">
               Mã nhân viên: {emp.employeeCode || "—"}
               {" • "}
@@ -313,12 +345,7 @@ export default function PayrollDetail() {
               <div className="text-sm text-gray-500">Không có dữ liệu thu nhập.</div>
             ) : (
               incomeItems.map((it) => (
-                <IncomeItem
-                  key={it.key}
-                  label={it.label}
-                  value={formatVND(it.value)}
-                  sub={it.sub}
-                />
+                <IncomeItem key={it.key} label={it.label} value={formatVND(it.value)} sub={it.sub} />
               ))
             )}
           </div>
@@ -333,12 +360,7 @@ export default function PayrollDetail() {
               <div className="text-sm text-gray-500">Không có dữ liệu khấu trừ.</div>
             ) : (
               deductItems.map((it) => (
-                <DeductItem
-                  key={it.key}
-                  label={it.label}
-                  value={`- ${formatVND(it.value)}`}
-                  sub={it.sub}
-                />
+                <DeductItem key={it.key} label={it.label} value={`- ${formatVND(it.value)}`} sub={it.sub} />
               ))
             )}
           </div>
@@ -353,8 +375,7 @@ export default function PayrollDetail() {
           </div>
 
           <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
-            Tổng ngày công: <b>{pr.totalDaysWorked}</b> • Locked:{" "}
-            <b>{pr.locked ? "Yes" : "No"}</b>
+            Tổng ngày công: <b>{pr.totalDaysWorked}</b> • Locked: <b>{pr.locked ? "Yes" : "No"}</b>
           </div>
         </div>
       </div>
@@ -372,11 +393,7 @@ export default function PayrollDetail() {
           <button
             disabled={String(pr.status || "").toLowerCase() === "missing"}
             className="px-8 py-2 bg-primary text-white font-bold rounded-lg text-sm shadow-lg hover:bg-opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-            title={
-              String(pr.status || "").toLowerCase() === "missing"
-                ? "Chưa có bảng lương để ký duyệt"
-                : ""
-            }
+            title={String(pr.status || "").toLowerCase() === "missing" ? "Chưa có bảng lương để ký duyệt" : ""}
           >
             Ký duyệt & chi trả
           </button>
@@ -421,11 +438,7 @@ function Summary({ label, value, danger, highlight }) {
       <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">{label}</span>
       <span
         className={`font-bold ${
-          highlight
-            ? "text-4xl text-primary"
-            : danger
-            ? "text-2xl text-red-500"
-            : "text-2xl text-gray-800 dark:text-gray-200"
+          highlight ? "text-4xl text-primary" : danger ? "text-2xl text-red-500" : "text-2xl text-gray-800 dark:text-gray-200"
         }`}
       >
         {value}

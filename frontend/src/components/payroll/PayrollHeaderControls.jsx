@@ -3,8 +3,11 @@ import React from "react";
 export default function PayrollHeaderControls({
   month,
   setMonth,
-  department,      // ✅ departmentId (string/number)
-  setDepartment,
+
+  // ✅ departmentId
+  departmentId,
+  setDepartmentId,
+
   departments = [],
   onReload,
   loading,
@@ -26,15 +29,15 @@ export default function PayrollHeaderControls({
           />
         </label>
 
-        {/* ✅ Department select: value = departmentId */}
+        {/* ✅ Department select theo ID */}
         <label className="flex items-center gap-2 px-4 h-11 rounded-xl border border-border bg-white text-sm font-semibold text-slate-700">
           <span className="material-symbols-outlined text-[18px] text-slate-500">
             apartment
           </span>
 
           <select
-            value={String(department ?? "")}
-            onChange={(e) => setDepartment(e.target.value)} // giữ string cũng ok
+            value={departmentId}
+            onChange={(e) => setDepartmentId(e.target.value)}
             disabled={loading || submitting}
             className="bg-transparent outline-none text-sm w-[220px] disabled:opacity-60"
           >
@@ -58,9 +61,7 @@ export default function PayrollHeaderControls({
         </button>
       </div>
 
-      {error ? (
-        <div className="text-sm text-red-600 font-semibold">{error}</div>
-      ) : null}
+      {error ? <div className="text-sm text-red-600 font-semibold">{error}</div> : null}
     </section>
   );
 }
