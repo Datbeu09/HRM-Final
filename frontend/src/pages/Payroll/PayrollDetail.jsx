@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import { getPayrollDetail } from "../../api/payrollDetail.api";
+import { sendPayslipEmail } from "../../api/payslipMail.api";
 
 /* ================= Helpers ================= */
 
@@ -18,8 +19,10 @@ const labelMonth = (ym) => {
   return `${m[2]}/${m[1]}`;
 };
 
+// ... giữ nguyên imports
+
 const statusBadge = (status) => {
-  const s = String(status || "").toLowerCase();
+  const s = String(status || "").trim().toLowerCase();
 
   if (s === "missing") {
     return {
@@ -28,27 +31,19 @@ const statusBadge = (status) => {
     };
   }
 
-  // backend bạn đang dùng status = "Đã duyệt" hoặc "Pending" hoặc "Missing"
-  if (s === "approved" || s === "đã duyệt") {
+  if (s === "đã duyệt") {
     return {
       text: "Đã duyệt",
       cls: "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800",
     };
   }
 
-  if (s === "rejected" || s === "từ chối") {
-    return {
-      text: "Từ chối",
-      cls: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800",
-    };
-  }
-
+  // ✅ mặc định: Chưa duyệt
   return {
-    text: "Đang chờ duyệt",
+    text: "Chưa duyệt",
     cls: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
   };
 };
-
 /**
  * normalize payload backend -> UI model (chịu nhiều shape)
  * ✅ FIX: totalIncome/gross + tax suy ra đúng, không bị agreedSalary nuốt mất phụ cấp
@@ -203,6 +198,8 @@ export default function PayrollDetail() {
   const [error, setError] = useState("");
   const [model, setModel] = useState(null);
 
+  const [sending, setSending] = useState(false);
+
   const badge = useMemo(() => statusBadge(model?.payroll?.status), [model?.payroll?.status]);
 
   const fetchDetail = async () => {
@@ -211,10 +208,6 @@ export default function PayrollDetail() {
 
     try {
       const data = await getPayrollDetail({ employeeId, month });
-
-      // Nếu cần debug:
-      // console.log("[FE] payroll-detail raw =", data);
-
       const normalized = normalizeDetail(data, month);
       setModel(normalized);
     } catch (e) {
@@ -223,6 +216,27 @@ export default function PayrollDetail() {
       setModel(null);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendEmail = async () => {
+    if (!employeeId || !month) return;
+
+    const prStatus = String(model?.payroll?.status || "").toLowerCase();
+    if (prStatus === "missing") {
+      alert("Chưa có bảng lương để gửi email.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      await sendPayslipEmail({ employeeId, month });
+      alert("Đã gửi phiếu lương qua email tới deaftt09@gmail.com");
+    } catch (e) {
+      console.error(e);
+      alert(e?.response?.data?.message || e?.message || "Gửi email thất bại");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -360,7 +374,12 @@ export default function PayrollDetail() {
               <div className="text-sm text-gray-500">Không có dữ liệu khấu trừ.</div>
             ) : (
               deductItems.map((it) => (
-                <DeductItem key={it.key} label={it.label} value={`- ${formatVND(it.value)}`} sub={it.sub} />
+                <DeductItem
+                  key={it.key}
+                  label={it.label}
+                  value={`- ${formatVND(it.value)}`}
+                  sub={it.sub}
+                />
               ))
             )}
           </div>
@@ -387,9 +406,16 @@ export default function PayrollDetail() {
         </div>
 
         <div className="flex gap-4">
-          <button className="px-6 py-2 border font-bold rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
-            Xuất lệnh chi
+          {/* ✅ đổi nút thành Gửi email */}
+          <button
+            onClick={handleSendEmail}
+            disabled={sending || String(pr.status || "").toLowerCase() === "missing"}
+            className="px-6 py-2 border font-bold rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-not-allowed"
+            title={String(pr.status || "").toLowerCase() === "missing" ? "Chưa có bảng lương để gửi email" : ""}
+          >
+            {sending ? "Đang gửi..." : "Gửi email phiếu lương"}
           </button>
+
           <button
             disabled={String(pr.status || "").toLowerCase() === "missing"}
             className="px-8 py-2 bg-primary text-white font-bold rounded-lg text-sm shadow-lg hover:bg-opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -438,7 +464,11 @@ function Summary({ label, value, danger, highlight }) {
       <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">{label}</span>
       <span
         className={`font-bold ${
-          highlight ? "text-4xl text-primary" : danger ? "text-2xl text-red-500" : "text-2xl text-gray-800 dark:text-gray-200"
+          highlight
+            ? "text-4xl text-primary"
+            : danger
+            ? "text-2xl text-red-500"
+            : "text-2xl text-gray-800 dark:text-gray-200"
         }`}
       >
         {value}

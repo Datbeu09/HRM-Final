@@ -1,9 +1,13 @@
-// src/routes/payrollDetail.routes.js
+// src/routes/payrollDetail.route.js
 const express = require("express");
-const router = express.Router();
-const controller = require("../controllers/payrollDetail.controller");
+const payrollDetailController = require("../controllers/payrollDetail.controller");
+const payslipMailController = require("../controllers/payslipMail.controller");
 
-// GET /api/payroll-detail/:employeeId?month=YYYY-MM
-router.get("/:employeeId", controller.getDetail);
+const router = express.Router();
+
+router.get("/:employeeId", payrollDetailController.getDetail);
+
+// ✅ gửi email phiếu lương
+router.post("/:employeeId/send-payslip-email", payslipMailController.sendPayslipEmail);
 
 module.exports = router;

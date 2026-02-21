@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   getPayrollApproval,
-  sendPayrollEmail,
   exportPayrollToExcel,
-  approvePayroll,
+  approveAndEmailPayroll,
+  // handleUnapprove nếu bạn có API mở khóa thì import vào đây
+  // unapprovePayroll,
 } from "../../api/payrollApproval.api";
 import { getDepartments } from "../../api/departments.api";
 
@@ -12,14 +13,26 @@ import PayrollEmployeeTable from "../../components/payroll/PayrollEmployeeTable"
 import PayrollToolbar from "../../components/payroll/PayrollToolbar";
 import PayrollKpiCards from "../../components/payroll/PayrollKpiCards";
 import PayrollHeaderControls from "../../components/payroll/PayrollHeaderControls";
-
 import { normalizeResponse } from "../../components/payroll/payrollUtils";
+import PayrollConfirmPopup from "../../components/Popup/PayrollConfirm";
+
+/* ================= Status helpers (2 trạng thái) ================= */
+
+const normalizeStatus2 = (status) => {
+  const s = String(status || "").trim().toLowerCase();
+  if (s === "đã duyệt") return "Đã duyệt";
+  if (s === "chưa duyệt") return "Chưa duyệt";
+  return status || "Chưa duyệt"; // default an toàn
+};
+
+const isRowApproved = (row) => {
+  // ✅ chỉ tin status
+  return normalizeStatus2(row?.status ?? row?.raw?.status) === "Đã duyệt";
+};
 
 export default function FinanceApprovalPage() {
   const [month, setMonth] = useState("2026-01");
   const [departments, setDepartments] = useState([]);
-
-  // ✅ departmentId (number/string) — CHỌN THEO ID
   const [departmentId, setDepartmentId] = useState("");
 
   const [q, setQ] = useState("");
@@ -33,43 +46,60 @@ export default function FinanceApprovalPage() {
   const [rows, setRows] = useState([]);
   const [checkState, setCheckState] = useState(null);
 
-  // ===== Fetch Departments =====
+  const [openConfirm, setOpenConfirm] = useState(false);
+
+  // ✅ lấy email mặc định từ localStorage user (nếu có)
+  const defaultEmail = useMemo(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "null");
+      return u?.email || u?.MailADD || u?.mail || "";
+    } catch {
+      return "";
+    }
+  }, []);
+
+  // ✅ ADMIN CHECK
+  const isAdmin = useMemo(() => {
+    try {
+      const u = JSON.parse(localStorage.getItem("user") || "null");
+      return String(u?.role || "").toUpperCase() === "ADMIN";
+    } catch {
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
         const data = await getDepartments();
         setDepartments(Array.isArray(data) ? data : []);
       } catch (e) {
-        console.error("[FE] Fetch departments failed", e);
+        console.error(e);
         setDepartments([]);
       }
     };
     fetchDepartments();
   }, []);
 
-  // ✅ Debug đúng chỗ (sau khi departments / rows thay đổi)
-  useEffect(() => {
-    if (departments?.length) console.log("departments[0]:", departments?.[0]);
-  }, [departments]);
-
-  useEffect(() => {
-    if (rows?.length) console.log("rows[0]:", rows?.[0]);
-  }, [rows]);
-
-  // ===== Fetch Payroll Approval Data =====
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const data = await getPayrollApproval({
         month,
-        // ✅ gửi departmentId lên BE
         department: departmentId || undefined,
       });
 
       const normalized = normalizeResponse(data);
+
+      // ✅ IMPORTANT: đảm bảo KHÔNG override status theo locked
+      const safeEmployees = (normalized.employees || []).map((x) => ({
+        ...x,
+        status: normalizeStatus2(x?.status ?? x?.raw?.status),
+      }));
+
       setKpi(normalized.kpi);
-      setRows(normalized.employees);
+      setRows(safeEmployees);
       setCheckState(null);
     } catch (e) {
       console.error(e);
@@ -85,7 +115,6 @@ export default function FinanceApprovalPage() {
     fetchData();
   }, [fetchData]);
 
-  // ===== Filter search =====
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return (rows || []).filter(
@@ -95,7 +124,17 @@ export default function FinanceApprovalPage() {
     );
   }, [rows, q]);
 
-  // ===== UI Status =====
+  const totalNetSalary = useMemo(() => {
+    return (rows || []).reduce((sum, item) => sum + Number(item.netSalary || 0), 0);
+  }, [rows]);
+
+  // ✅ xác định đã chốt hay chưa (CHỈ dựa status)
+  const isApproved = useMemo(() => {
+    const salaryRows = (rows || []).filter((x) => x.id != null);
+    if (salaryRows.length === 0) return false;
+    return salaryRows.every((x) => isRowApproved(x));
+  }, [rows]);
+
   const dataStatusLabel = useMemo(() => {
     if (loading) return "Đang tải...";
     if (error) return "Có lỗi dữ liệu";
@@ -108,22 +147,6 @@ export default function FinanceApprovalPage() {
     if (checkState?.allOk === false) return "bg-amber-500/70";
     return "bg-green-500/70";
   }, [error, checkState]);
-
-  // ===== Actions =====
-  const handleSendEmail = async () => {
-    if (loading || submitting) return;
-    setSubmitting(true);
-    setError("");
-    try {
-      await sendPayrollEmail({ month, department: departmentId || undefined });
-      alert("Phiếu lương đã được gửi qua email.");
-    } catch (e) {
-      console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Gửi phiếu lương thất bại");
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleExportFile = async () => {
     if (loading || submitting) return;
@@ -142,14 +165,12 @@ export default function FinanceApprovalPage() {
       link.href = url;
 
       const depSuffix = departmentId ? `_dep${departmentId}` : "";
-      link.download = `payroll_${month}${depSuffix}.xlsx`;
+      link.download = `phieu_xuat_luong_tong_${month}${depSuffix}.xlsx`;
 
       document.body.appendChild(link);
       link.click();
       link.remove();
-
       window.URL.revokeObjectURL(url);
-      alert("File Excel đã được xuất.");
     } catch (e) {
       console.error(e);
       setError(e?.response?.data?.message || e?.message || "Xuất file thất bại");
@@ -158,17 +179,49 @@ export default function FinanceApprovalPage() {
     }
   };
 
-  const handleApprove = async () => {
+  // ✅ chỉ mở popup nếu chưa chốt
+  const handleApproveButton = () => {
     if (loading || submitting) return;
+
+    // ✅ Nếu đã chốt: chỉ ADMIN mới được mở khóa
+    if (isApproved) {
+      if (!isAdmin) return;
+
+      const ok = window.confirm(
+        "Bạn có chắc muốn MỞ KHÓA bảng lương tháng này không?\n(Đã duyệt → Chưa duyệt)"
+      );
+      if (!ok) return;
+
+      // ✅ Nếu bạn có API mở khóa thì gọi ở đây.
+      // await unapprovePayroll({ month, department: departmentId || undefined })
+      // await fetchData()
+
+      alert("Bạn cần API mở khóa (unapprove) để cập nhật DB status='Chưa duyệt' và locked=0.");
+      return;
+    }
+
+    // ✅ Chưa chốt -> mở popup ký -> chốt + gửi mail
+    setOpenConfirm(true);
+  };
+
+  const handleConfirmApprove = async ({ toEmail }) => {
+    if (loading || submitting) return;
+
     setSubmitting(true);
     setError("");
     try {
-      await approvePayroll({ month, department: departmentId || undefined });
+      await approveAndEmailPayroll({
+        month,
+        department: departmentId || undefined,
+        toEmail,
+      });
+
       await fetchData();
-      alert("Bảng lương đã được chốt thành công.");
+      alert("Đã chốt bảng lương và gửi file Excel qua email.");
+      setOpenConfirm(false);
     } catch (e) {
       console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Chốt bảng lương thất bại");
+      setError(e?.response?.data?.message || e?.message || "Chốt + gửi email thất bại");
     } finally {
       setSubmitting(false);
     }
@@ -197,12 +250,13 @@ export default function FinanceApprovalPage() {
             setQ={setQ}
             sort={sort}
             setSort={setSort}
-            onSendEmail={handleSendEmail}
             onExportFile={handleExportFile}
-            onApprove={handleApprove}
+            onApprove={handleApproveButton}
             loading={loading}
             submitting={submitting}
             disableApprove={checkState?.allOk === false}
+            isApproved={isApproved}
+            isAdmin={isAdmin}
           />
 
           <PayrollEmployeeTable
@@ -218,6 +272,25 @@ export default function FinanceApprovalPage() {
 
           <PayrollAutoCheckBar checkState={checkState} />
         </div>
+
+        <PayrollConfirmPopup
+          isOpen={openConfirm}
+          onClose={() => setOpenConfirm(false)}
+          totalAmount={totalNetSalary}
+          loading={submitting}
+          onConfirm={handleConfirmApprove}
+          isApproved={isApproved}
+          monthLabel={month}
+          departmentLabel={
+            departmentId
+              ? `Phòng ban: ${
+                  departments.find((d) => String(d.id) === String(departmentId))
+                    ?.departmentName || departmentId
+                }`
+              : "Tất cả phòng ban"
+          }
+          defaultEmail={defaultEmail}
+        />
       </main>
     </div>
   );

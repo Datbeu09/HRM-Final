@@ -1,4 +1,3 @@
-// src/services/payrollApproval.service.js
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const ExcelJS = require("exceljs");
@@ -110,7 +109,6 @@ async function fetchApprovalRows({ monthStr, department }) {
 /* ================= Build response object ================= */
 
 function buildApprovalResponse({ rows, month, year, depId }) {
-  // KPI
   let gross = 0;
   let ins = 0;
   let net = 0;
@@ -130,7 +128,7 @@ function buildApprovalResponse({ rows, month, year, depId }) {
     const hasSalary = r.id != null;
 
     return {
-      id: hasSalary ? r.id : null, // monthlysalary id
+      id: hasSalary ? r.id : null,
       employeeId: r.employeeId,
       employeeCode: r.employeeCode,
       name: r.name,
@@ -153,7 +151,7 @@ function buildApprovalResponse({ rows, month, year, depId }) {
       netSalary: hasSalary ? safeNumber(r.netSalary) : 0,
 
       locked: toInt01(hasSalary ? r.locked : 0),
-      status: hasSalary ? (r.status || "Pending") : "Missing",
+      status: hasSalary ? (r.status || "Chưa duyệt") : "Missing",
 
       approvedByAccountId: hasSalary ? (r.approvedByAccountId ?? null) : null,
       approvedAt: hasSalary ? (r.approvedAt ?? null) : null,
@@ -273,6 +271,7 @@ module.exports = {
     };
   },
 
+  // ✅ CHỐT: Đã duyệt + locked=1
   async approve({ monthStr, department, approvedByAccountId }) {
     const { month, year } = parseMonthYear(monthStr);
     if (!approvedByAccountId) throw new ApiError(400, "approvedByAccountId is required");
@@ -299,11 +298,36 @@ module.exports = {
     return { updated: result.affectedRows };
   },
 
+  // ✅ NEW: MỞ KHÓA: Chưa duyệt + locked=0
+  async unapprove({ monthStr, department }) {
+    const { month, year } = parseMonthYear(monthStr);
+
+    const dep = buildDepartmentWhere({ department });
+    const params = [month, year, ...dep.params];
+
+    const [result] = await pool.query(
+      `
+      UPDATE monthlysalary ms
+      JOIN employees e ON e.id = ms.employeeId
+      SET ms.status = 'Chưa duyệt',
+          ms.locked = 0,
+          ms.approvedByAccountId = NULL,
+          ms.approvedAt = NULL,
+          ms.updated_at = NOW()
+      WHERE ms.month = ?
+        AND ms.year = ?
+        ${dep.where}
+      `,
+      params
+    );
+
+    return { updated: result.affectedRows };
+  },
+
   async requestEdit({ monthStr, department, employeeId, reason, createdByAccountId }) {
     const { month, year, monthStr: monthKey } = parseMonthYear(monthStr);
     if (!hasText(reason)) throw new ApiError(400, "reason is required");
 
-    // department giờ là departmentId => log lại theo id cho rõ
     const depPart = hasText(department) ? `|depId=${normStr(department)}` : "";
     const finalReason = `[${monthKey}${depPart}] ${normStr(reason)}`;
 
@@ -331,105 +355,285 @@ module.exports = {
   },
 
   /**
-   * Gửi phiếu lương qua email (stub)
-   */
-  async sendPayrollEmail({ monthStr, department, byAccountId }) {
-    const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
-
-    const employeeIds = (rows || []).map((r) => r.employeeId).filter(Boolean);
-
-    if (employeeIds.length === 0) {
-      return { ok: true, sent: 0, skipped: 0, month, year, departmentId: depId };
-    }
-
-    const placeholders = employeeIds.map(() => "?").join(",");
-    const [emails] = await pool.query(
-      `SELECT id AS employeeId, email FROM employees WHERE id IN (${placeholders})`,
-      employeeIds
-    );
-
-    const emailMap = new Map((emails || []).map((x) => [x.employeeId, x.email]));
-
-    let sent = 0;
-    let skipped = 0;
-
-    for (const r of rows) {
-      const mail = normStr(emailMap.get(r.employeeId));
-      if (!mail) {
-        skipped++;
-        continue;
-      }
-      // TODO: gắn mailer tại đây
-      sent++;
-    }
-
-    return {
-      ok: true,
-      month,
-      year,
-      departmentId: depId,
-      byAccountId: byAccountId ?? null,
-      sent,
-      skipped,
-      note: "Email sending stubbed. Plug your mailer here to actually send.",
-    };
-  },
-
-  /**
-   * Export Excel chuẩn .xlsx bằng exceljs
-   * ✅ FIX: không dùng `this.getPayrollApproval` để tránh lỗi context
+   * Export Excel “Phiếu xuất lương tổng” theo tháng
    */
   async exportPayrollToExcel({ monthStr, department }) {
     const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
     const data = buildApprovalResponse({ rows, month, year, depId });
 
     const wb = new ExcelJS.Workbook();
-    const ws = wb.addWorksheet("Payroll");
+    const ws = wb.addWorksheet("BANG_LUONG_TONG");
 
-    ws.columns = [
-      { header: "Mã NV", key: "employeeCode", width: 14 },
-      { header: "Họ tên", key: "name", width: 26 },
-      { header: "Phòng ban", key: "departmentName", width: 20 },
-      { header: "Base", key: "baseSalary", width: 14 },
-      { header: "Allowance", key: "totalAllowances", width: 14 },
-      { header: "Insurance", key: "totalInsurance", width: 14 },
-      { header: "Gross", key: "grossSalary", width: 14 },
-      { header: "Net", key: "netSalary", width: 14 },
-      { header: "Status", key: "status", width: 14 },
-    ];
+    const moneyFmt = "#,##0";
+    const merge = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2);
 
-    (data.employees || []).forEach((e) => {
-      ws.addRow({
-        employeeCode: e.employeeCode,
-        name: e.name,
-        departmentName: e.departmentName || "N/A",
-        baseSalary: e.baseSalary,
-        totalAllowances: e.totalAllowances,
-        totalInsurance: e.totalInsurance,
-        grossSalary: e.grossSalary,
-        netSalary: e.netSalary,
-        status: e.status,
-      });
-    });
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, "0");
+    const mm = String(today.getMonth() + 1).padStart(2, "0");
+    const yyyy = today.getFullYear();
+    const todayStr = `${dd}/${mm}/${yyyy}`;
+
+    const departmentLabel = data.departmentId ? `Dep ID: ${data.departmentId}` : "Tất cả phòng ban";
+
+    ws.pageSetup = {
+      paperSize: 9,
+      orientation: "landscape",
+      fitToPage: true,
+      fitToWidth: 1,
+      fitToHeight: 0,
+    };
+
+    merge(1, 1, 1, 9);
+    ws.getCell("A1").value = `BẢNG LƯƠNG TỔNG HỢP THÁNG ${monthStr}`;
+    ws.getCell("A1").font = { bold: true, size: 16 };
+    ws.getCell("A1").alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 28;
+
+    merge(2, 1, 2, 9);
+    ws.getCell("A2").value = `Công ty: ............................................................`;
+    ws.getCell("A2").alignment = { horizontal: "left", vertical: "middle" };
+
+    merge(3, 1, 3, 9);
+    ws.getCell("A3").value = `Ngày xuất: ${todayStr}   •   Người xuất: ................................`;
+    ws.getCell("A3").alignment = { horizontal: "left", vertical: "middle" };
+
+    merge(4, 1, 4, 9);
+    ws.getCell("A4").value = `Phòng ban: ${departmentLabel}`;
+    ws.getCell("A4").alignment = { horizontal: "left", vertical: "middle" };
 
     ws.addRow([]);
-    ws.addRow({
-      employeeCode: "KPI",
-      name: "",
-      departmentName: "",
-      baseSalary: "",
-      totalAllowances: "",
-      totalInsurance: data.kpi.ins,
-      grossSalary: data.kpi.gross,
-      netSalary: data.kpi.net,
-      status: "TAX=" + data.kpi.tax,
-    });
+    ws.addRow([]);
 
-    ws.getRow(1).font = { bold: true };
+    const headerRowIdx = 6;
+    ws.getRow(headerRowIdx).values = [
+      "STT",
+      "Mã NV",
+      "Họ tên",
+      "Phòng ban",
+      "Lương cơ bản",
+      "Phụ cấp",
+      "BHXH/BHYT/BHTN",
+      "Thuế TNCN",
+      "Thực lĩnh",
+    ];
+
+    ws.getRow(headerRowIdx).font = { bold: true };
+    ws.getRow(headerRowIdx).alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    ws.getRow(headerRowIdx).height = 22;
+
+    ws.getColumn(1).width = 6;
+    ws.getColumn(2).width = 14;
+    ws.getColumn(3).width = 24;
+    ws.getColumn(4).width = 20;
+    ws.getColumn(5).width = 16;
+    ws.getColumn(6).width = 14;
+    ws.getColumn(7).width = 18;
+    ws.getColumn(8).width = 14;
+    ws.getColumn(9).width = 16;
+
+    let rowIdx = headerRowIdx + 1;
+    let stt = 1;
+
+    for (const e of data.employees || []) {
+      const base = Number(e.baseSalary || 0);
+      const allowance = Number(e.totalAllowances || 0);
+      const ins = Number(e.totalInsurance || 0);
+      const net = Number(e.netSalary || 0);
+
+      let tax = base + allowance - net - ins;
+      if (tax < 0) tax = 0;
+
+      const r = ws.getRow(rowIdx);
+
+      r.getCell(1).value = stt++;
+      r.getCell(2).value = e.employeeCode || "";
+      r.getCell(3).value = e.name || "";
+      r.getCell(4).value = e.departmentName || "N/A";
+
+      r.getCell(5).value = base;
+      r.getCell(6).value = allowance;
+      r.getCell(7).value = ins;
+      r.getCell(8).value = tax;
+      r.getCell(9).value = net;
+
+      r.getCell(1).alignment = { horizontal: "center" };
+      r.getCell(2).alignment = { horizontal: "center" };
+
+      for (const c of [5, 6, 7, 8, 9]) {
+        r.getCell(c).alignment = { horizontal: "right" };
+        r.getCell(c).numFmt = moneyFmt;
+      }
+
+      rowIdx++;
+    }
+
+    const lastDataRow = rowIdx - 1;
+
+    const totalRowIdx = rowIdx;
+    ws.getRow(totalRowIdx).height = 20;
+
+    merge(totalRowIdx, 1, totalRowIdx, 4);
+    ws.getCell(totalRowIdx, 1).value = "TỔNG";
+    ws.getCell(totalRowIdx, 1).font = { bold: true };
+    ws.getCell(totalRowIdx, 1).alignment = { horizontal: "right", vertical: "middle" };
+
+    ws.getCell(totalRowIdx, 5).value = { formula: `SUM(E${headerRowIdx + 1}:E${lastDataRow})` };
+    ws.getCell(totalRowIdx, 6).value = { formula: `SUM(F${headerRowIdx + 1}:F${lastDataRow})` };
+    ws.getCell(totalRowIdx, 7).value = { formula: `SUM(G${headerRowIdx + 1}:G${lastDataRow})` };
+    ws.getCell(totalRowIdx, 8).value = { formula: `SUM(H${headerRowIdx + 1}:H${lastDataRow})` };
+    ws.getCell(totalRowIdx, 9).value = { formula: `SUM(I${headerRowIdx + 1}:I${lastDataRow})` };
+
+    for (const c of [5, 6, 7, 8, 9]) {
+      ws.getCell(totalRowIdx, c).font = { bold: true };
+      ws.getCell(totalRowIdx, c).numFmt = moneyFmt;
+      ws.getCell(totalRowIdx, c).alignment = { horizontal: "right" };
+    }
+
+    const tableTop = headerRowIdx;
+    const tableBottom = totalRowIdx;
+    for (let r = tableTop; r <= tableBottom; r++) {
+      for (let c = 1; c <= 9; c++) {
+        ws.getCell(r, c).border = {
+          top: { style: "thin" },
+          left: { style: "thin" },
+          bottom: { style: "thin" },
+          right: { style: "thin" },
+        };
+      }
+    }
+
+    const kpiStart = totalRowIdx + 2;
+
+    merge(kpiStart, 1, kpiStart, 3);
+    ws.getCell(kpiStart, 1).value = "TỔNG HỢP KPI";
+    ws.getCell(kpiStart, 1).font = { bold: true };
+
+    const kpiRows = [
+      ["Tổng Gross", data.kpi.gross],
+      ["Tổng BH", data.kpi.ins],
+      ["Tổng Thuế", data.kpi.tax],
+      ["Tổng Net", data.kpi.net],
+    ];
+
+    let rr = kpiStart + 1;
+    for (const [label, val] of kpiRows) {
+      merge(rr, 1, rr, 2);
+      ws.getCell(rr, 1).value = label;
+      ws.getCell(rr, 3).value = Number(val || 0);
+      ws.getCell(rr, 3).numFmt = moneyFmt;
+      ws.getCell(rr, 3).alignment = { horizontal: "right" };
+      rr++;
+    }
+
+    const signRow = rr + 2;
+
+    merge(signRow, 1, signRow, 3);
+    merge(signRow, 4, signRow, 6);
+    merge(signRow, 7, signRow, 9);
+
+    ws.getCell(signRow, 1).value = "NGƯỜI LẬP";
+    ws.getCell(signRow, 4).value = "KẾ TOÁN";
+    ws.getCell(signRow, 7).value = "GIÁM ĐỐC";
+
+    for (const c of [1, 4, 7]) {
+      ws.getCell(signRow, c).font = { bold: true };
+      ws.getCell(signRow, c).alignment = { horizontal: "center" };
+    }
+
+    merge(signRow + 1, 1, signRow + 5, 3);
+    merge(signRow + 1, 4, signRow + 5, 6);
+    merge(signRow + 1, 7, signRow + 5, 9);
 
     const buffer = await wb.xlsx.writeBuffer();
-    const filename = `payroll_${monthStr}${data.departmentId ? `_dep${data.departmentId}` : ""}.xlsx`;
+    const filename = `phieu_xuat_luong_tong_${monthStr}${
+      data.departmentId ? `_dep${data.departmentId}` : ""
+    }.xlsx`;
 
     return { buffer, filename };
+  },
+  async approveAndEmail({ monthStr, department, approvedByAccountId, toEmail }) {
+    const { month, year } = this.parseMonthYear(monthStr);
+    if (!approvedByAccountId) throw new ApiError(400, "approvedByAccountId is required");
+    if (!toEmail) throw new ApiError(400, "toEmail is required");
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // --- check đã chốt chưa (nếu đã chốt thì báo luôn) ---
+      // (đỡ bị bấm lại)
+      const dep = (function buildDepartmentWhere(department) {
+        const normalizeDepartmentId = (v) => {
+          if (v === undefined || v === null || v === "") return null;
+          if (typeof v === "object") return null;
+          const n = Number(String(v).trim());
+          if (!Number.isFinite(n) || n <= 0) return null;
+          return n;
+        };
+        const depId = normalizeDepartmentId(department);
+        if (!depId) return { where: "", params: [], depId: null };
+        return { where: " AND e.departmentId = ? ", params: [depId], depId };
+      })(department);
+
+      const [lockedRows] = await conn.query(
+        `
+        SELECT COUNT(*) AS cntLocked
+        FROM monthlysalary ms
+        JOIN employees e ON e.id = ms.employeeId
+        WHERE ms.month = ?
+          AND ms.year = ?
+          ${dep.where}
+          AND ms.locked = 1
+        `,
+        [month, year, ...dep.params]
+      );
+
+      const cntLocked = Number(lockedRows?.[0]?.cntLocked || 0);
+      if (cntLocked > 0) {
+        throw new ApiError(400, "Bảng lương đã chốt rồi, không thể chốt lại.");
+      }
+
+      // --- 1) Approve + lock ---
+      const [result] = await conn.query(
+        `
+        UPDATE monthlysalary ms
+        JOIN employees e ON e.id = ms.employeeId
+        SET ms.status = 'Đã duyệt',
+            ms.locked = 1,
+            ms.approvedByAccountId = ?,
+            ms.approvedAt = NOW(),
+            ms.updated_at = NOW()
+        WHERE ms.month = ?
+          AND ms.year = ?
+          ${dep.where}
+        `,
+        [approvedByAccountId, month, year, ...dep.params]
+      );
+
+      // --- 2) Export Excel (tận dụng hàm có sẵn) ---
+      const { buffer, filename } = await this.exportPayrollToExcel({ monthStr, department });
+
+      // --- 3) Send Email ---
+      await sendPayrollExcel({
+        to: toEmail,
+        subject: `Bảng lương tháng ${monthStr}${dep.depId ? ` (Dep ${dep.depId})` : ""}`,
+        text: `Bảng lương tháng ${monthStr} đã được chốt. File Excel đính kèm.`,
+        filename,
+        buffer,
+      });
+
+      await conn.commit();
+      return {
+        updated: result.affectedRows,
+        emailed: true,
+        filename,
+        toEmail,
+      };
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
   },
 };

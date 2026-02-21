@@ -1,4 +1,3 @@
-// src/components/payroll/PayrollEmployeeTable.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { formatVND, labelMonth } from "./payrollUtils";
@@ -19,16 +18,24 @@ function EmptyState() {
 }
 
 function normalizeStatusLabel(status) {
-  const s = String(status || "").trim().toLowerCase();
-  if (s === "missing" || s === "chưa có bảng lương") return "Thiếu bảng lương";
-  if (s === "pending" || s === "chờ duyệt" || s === "đang chờ duyệt")
-    return "Chờ duyệt";
-  if (s === "approved" || s === "đã duyệt") return "Đã duyệt";
-  if (s === "rejected" || s === "từ chối") return "Từ chối";
-  return status || "N/A";
+  if (!status) return "Chưa duyệt";
+  const s = String(status).trim().toLowerCase();
+  if (s === "đã duyệt") return "Đã duyệt";
+  if (s === "chưa duyệt") return "Chưa duyệt";
+  return status;
 }
 
-// ✅ giống EmployeeTable: find theo id và lấy departmentName
+function statusBadge(status) {
+  const t = normalizeStatusLabel(status);
+  const approved = t === "Đã duyệt";
+  return {
+    text: t,
+    cls: approved
+      ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+      : "bg-amber-100 text-amber-700 border-amber-200",
+  };
+}
+
 function getDepartmentName(departments, departmentId) {
   if (!departmentId) return "N/A";
   const dep = (departments || []).find(
@@ -42,23 +49,15 @@ export default function PayrollEmployeeTable({
   loading,
   rows,
   filtered,
-
-  // ✅ departmentId đang chọn từ HeaderControls (PHẢI là id)
   departmentId,
-
-  // ✅ list departments từ API
   departments = [],
-
   dataStatusLabel,
   dotColorClass,
 }) {
   const navigate = useNavigate();
-
   const [page, setPage] = useState(1);
   const pageSize = 6;
 
-  // ✅ Filter theo departmentId:
-  // Nếu row chưa có departmentId do shape lạ -> fallback r.raw.departmentId
   const finalRows = useMemo(() => {
     if (!departmentId) return filtered || [];
     return (filtered || []).filter((r) => {
@@ -117,16 +116,8 @@ export default function PayrollEmployeeTable({
               <th className="px-6 py-4 text-left font-semibold whitespace-nowrap">Mã NV</th>
               <th className="px-6 py-4 text-left font-semibold whitespace-nowrap">Họ tên</th>
               <th className="px-6 py-4 text-left font-semibold whitespace-nowrap">Phòng ban</th>
-
               <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">Lương cơ bản</th>
               <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">Ngày công</th>
-              {/* <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">
-                Phụ cấp &amp; Thưởng
-              </th>
-              <th className="px-6 py-4 text-right font-semibold whitespace-nowrap">
-                Khấu trừ (BH)
-              </th> */}
-
               <th className="px-6 py-4 text-right font-semibold bg-primary/5 text-primary whitespace-nowrap">
                 Thực nhận
               </th>
@@ -151,19 +142,17 @@ export default function PayrollEmployeeTable({
               pagedRows.map((r) => {
                 const rowDepId = r?.departmentId ?? r?.raw?.departmentId ?? null;
 
-                // Ưu tiên departmentName từ backend (JOIN departments) / normalizeEmployeeRow
-                // Nếu không có thì mới find từ list departments
                 const departmentName =
                   r?.departmentName ||
                   r?.raw?.departmentName ||
                   getDepartmentName(departments, rowDepId);
 
-                // ✅ field fallback chắc chắn
                 const baseSalary = r?.baseSalary ?? r?.raw?.baseSalary ?? 0;
                 const daysWorked = r?.totalDaysWorked ?? r?.raw?.totalDaysWorked ?? 0;
-                const allowances = r?.totalAllowances ?? r?.raw?.totalAllowances ?? 0;
-                const insurance = r?.totalInsurance ?? r?.raw?.totalInsurance ?? 0;
                 const net = r?.netSalary ?? r?.raw?.netSalary ?? 0;
+
+                const st = r?.status ?? r?.raw?.status;
+                const badge = statusBadge(st);
 
                 return (
                   <tr
@@ -192,20 +181,14 @@ export default function PayrollEmployeeTable({
                       {Number(daysWorked)}
                     </td>
 
-                    {/* <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
-                      {formatVND(allowances)}
-                    </td>
-
-                    <td className="px-6 py-4 text-right tabular-nums whitespace-nowrap">
-                      {formatVND(insurance)}
-                    </td> */}
-
                     <td className="px-6 py-4 text-right font-extrabold text-primary bg-primary/5 tabular-nums whitespace-nowrap">
                       {formatVND(net)}
                     </td>
 
-                    <td className="px-6 py-4 text-left font-semibold text-slate-500 whitespace-nowrap">
-                      {normalizeStatusLabel(r?.status ?? r?.raw?.status)}
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-3 py-1 text-xs font-bold rounded-full border ${badge.cls}`}>
+                        {badge.text}
+                      </span>
                     </td>
                   </tr>
                 );

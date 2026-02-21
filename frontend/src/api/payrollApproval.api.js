@@ -1,11 +1,10 @@
-// src/api/payrollApproval.api.js
+// api/payrollApproval.api.js
 import axiosClient from "./axiosClient";
 
 function unwrap(res) {
   const d = res?.data;
   if (!d) return null;
 
-  // { success:true, data:{...} }
   if (d.data && typeof d.data === "object") {
     if (d.data.data && typeof d.data.data === "object") return d.data.data;
     return d.data;
@@ -36,6 +35,14 @@ export const approvePayroll = async ({ month, department } = {}) => {
   return unwrap(res);
 };
 
+export const unapprovePayroll = async ({ month, department } = {}) => {
+  const res = await axiosClient.post("/payroll-approval/unapprove", {
+    month,
+    department: department || undefined,
+  });
+  return unwrap(res);
+};
+
 export const requestPayrollEdit = async ({ month, department, employeeId, reason } = {}) => {
   const res = await axiosClient.post("/payroll-approval/request-edit", {
     month,
@@ -46,19 +53,21 @@ export const requestPayrollEdit = async ({ month, department, employeeId, reason
   return unwrap(res);
 };
 
-export const sendPayrollEmail = async ({ month, department } = {}) => {
-  const res = await axiosClient.post("/payroll-approval/send-email", {
-    month,
-    department: department || undefined,
-  });
-  return unwrap(res);
-};
-
 export const exportPayrollToExcel = async ({ month, department } = {}) => {
   const res = await axiosClient.post(
     "/payroll-approval/export",
     { month, department: department || undefined },
     { responseType: "blob" }
   );
-  return res?.data; // blob
+  return res?.data;
+};
+
+// ✅ NEW: approve + export + email (1 API)
+export const approveAndEmailPayroll = async ({ month, department, toEmail } = {}) => {
+  const res = await axiosClient.post("/payroll-approval/approve-and-email", {
+    month,
+    department: department || undefined,
+    toEmail,
+  });
+  return unwrap(res);
 };

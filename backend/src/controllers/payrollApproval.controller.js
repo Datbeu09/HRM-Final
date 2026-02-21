@@ -1,4 +1,4 @@
-// src/controllers/payrollApproval.controller.js
+// controllers/payrollApproval.controller.js
 const service = require("../services/payrollApproval.service");
 const ApiError = require("../utils/ApiError");
 
@@ -10,7 +10,6 @@ function currentYYYYMM() {
 }
 
 module.exports = {
-  // GET /api/payroll-approval?month=2026-01&department=1
   async get(req, res, next) {
     try {
       let { month, department } = req.query;
@@ -18,7 +17,7 @@ module.exports = {
 
       const data = await service.getPayrollApproval({
         monthStr: month,
-        department, // ✅ departmentId
+        department,
       });
 
       res.json({ success: true, data });
@@ -27,7 +26,6 @@ module.exports = {
     }
   },
 
-  // POST /api/payroll-approval/auto-check
   async autoCheck(req, res, next) {
     try {
       let { month, department } = req.body || {};
@@ -40,7 +38,6 @@ module.exports = {
     }
   },
 
-  // POST /api/payroll-approval/approve
   async approve(req, res, next) {
     try {
       let { month, department, approvedByAccountId } = req.body || {};
@@ -61,7 +58,22 @@ module.exports = {
     }
   },
 
-  // POST /api/payroll-approval/request-edit
+  async unapprove(req, res, next) {
+    try {
+      let { month, department } = req.body || {};
+      if (!month) month = currentYYYYMM();
+
+      const data = await service.unapprove({
+        monthStr: month,
+        department,
+      });
+
+      res.json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  },
+
   async requestEdit(req, res, next) {
     try {
       let { month, department, employeeId, reason } = req.body || {};
@@ -83,27 +95,6 @@ module.exports = {
     }
   },
 
-  // POST /api/payroll-approval/send-email
-  async sendEmail(req, res, next) {
-    try {
-      let { month, department } = req.body || {};
-      if (!month) month = currentYYYYMM();
-
-      const byAccountId = req.user?.id || null;
-
-      const data = await service.sendPayrollEmail({
-        monthStr: month,
-        department,
-        byAccountId,
-      });
-
-      res.json({ success: true, data });
-    } catch (e) {
-      next(e);
-    }
-  },
-
-  // POST /api/payroll-approval/export
   async exportExcel(req, res, next) {
     try {
       let { month, department } = req.body || {};
@@ -120,6 +111,30 @@ module.exports = {
       );
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(buffer);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // ✅ NEW: POST /api/payroll-approval/approve-and-email
+  async approveAndEmail(req, res, next) {
+    try {
+      let { month, department, toEmail } = req.body || {};
+      if (!month) month = currentYYYYMM();
+
+      const approverId = req.user?.id;
+      if (!approverId) throw new ApiError(401, "Unauthorized");
+
+      if (!toEmail) throw new ApiError(400, "toEmail is required");
+
+      const data = await service.approveAndEmail({
+        monthStr: month,
+        department,
+        approvedByAccountId: approverId,
+        toEmail,
+      });
+
+      res.json({ success: true, data });
     } catch (e) {
       next(e);
     }

@@ -1,6 +1,25 @@
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
 
+// ===== POSITION MAPPING (KHÔNG ĐỤNG DB) =====
+// ⚠️ Hãy sửa mapping cho đúng giá trị employees.position thực tế của bạn
+const POSITION_MAP = {
+  ADMIN: 1,
+  DIRECTOR: 2,
+  HR: 3,
+  ACCOUNTANT: 4,
+  EMPLOYEE: 5,
+};
+
+function normalizePositionKey(s) {
+  return String(s || "").trim().toUpperCase();
+}
+
+function mapPositionToId(positionText) {
+  const key = normalizePositionKey(positionText);
+  return POSITION_MAP[key] ?? null;
+}
+
 async function getById(id) {
   const [rows] = await pool.query(
     `
@@ -41,7 +60,6 @@ async function getAll(query = {}) {
     params.push(String(query.status));
   }
 
-  // optional: lọc theo taskId
   if (query.taskId) {
     where.push("wa.taskId = ?");
     params.push(Number(query.taskId));
@@ -74,7 +92,7 @@ async function create(data) {
   const {
     employeeId,
     departmentId,
-    positionId,
+    positionId, // có thể FE không gửi
     taskId,
     taskName,
     assignedDate,
@@ -84,15 +102,38 @@ async function create(data) {
     assignedByAccountId,
   } = data;
 
-  // ===== validate theo popup =====
+  // ===== validate cơ bản =====
   if (!employeeId) throw new ApiError(400, "employeeId is required");
   if (!assignedDate) throw new ApiError(400, "assignedDate is required");
   if (!taskId && !taskName) throw new ApiError(400, "taskId or taskName is required");
 
+  // ✅ TỰ TÍNH positionId (KHÔNG ĐỤNG DB SCHEMA/DATA)
+  let finalPositionId = positionId ?? null;
+
+  if (!finalPositionId) {
+    const [eRows] = await pool.query(
+      "SELECT position FROM employees WHERE id = ? LIMIT 1",
+      [employeeId]
+    );
+    if (!eRows.length) throw new ApiError(400, "employeeId is invalid");
+
+    finalPositionId = mapPositionToId(eRows[0].position);
+  }
+
+  if (!finalPositionId) {
+    throw new ApiError(
+      400,
+      "positionId is required (cannot map from employees.position). Update POSITION_MAP in workAssignments.service.js"
+    );
+  }
+
   // nếu có taskId mà chưa có taskName -> lấy taskName từ tasks
   let finalTaskName = taskName;
   if (taskId && !finalTaskName) {
-    const [tRows] = await pool.query("SELECT taskName FROM tasks WHERE id = ? LIMIT 1", [taskId]);
+    const [tRows] = await pool.query(
+      "SELECT taskName FROM tasks WHERE id = ? LIMIT 1",
+      [taskId]
+    );
     if (!tRows.length) throw new ApiError(400, "taskId is invalid");
     finalTaskName = tRows[0].taskName;
   }
@@ -111,7 +152,7 @@ async function create(data) {
     [
       employeeId,
       departmentId ?? null,
-      positionId ?? null,
+      finalPositionId, // ✅ không null
       taskId ?? null,
       finalTaskName,
       assignedDate,
@@ -129,23 +170,25 @@ async function update(id, data) {
   const current = await getById(id);
   if (!current) return null;
 
-  // nếu update taskId mà taskName trống -> fill từ tasks
   let nextTaskName = data.taskName ?? current.taskName;
 
   const nextTaskId =
     data.taskId !== undefined ? (data.taskId ?? null) : (current.taskId ?? null);
 
   if (data.taskId !== undefined && nextTaskId && !data.taskName) {
-    const [tRows] = await pool.query("SELECT taskName FROM tasks WHERE id = ? LIMIT 1", [nextTaskId]);
+    const [tRows] = await pool.query(
+      "SELECT taskName FROM tasks WHERE id = ? LIMIT 1",
+      [nextTaskId]
+    );
     if (!tRows.length) throw new ApiError(400, "taskId is invalid");
     nextTaskName = tRows[0].taskName;
   }
 
-  // vẫn đảm bảo (taskId OR taskName) sau update
   if (!nextTaskId && !nextTaskName) {
     throw new ApiError(400, "taskId or taskName is required");
   }
 
+  // ✅ nếu update không gửi positionId thì giữ nguyên như cũ
   await pool.query(
     `
     UPDATE workassignments
@@ -191,6 +234,7 @@ async function remove(id) {
   );
   return rs.affectedRows > 0;
 }
+
 async function getMine(employeeId) {
   if (!employeeId) throw new ApiError(400, "employeeId is required");
 
@@ -203,7 +247,6 @@ async function getMine(employeeId) {
       d.departmentName AS departmentName,
       t.taskName AS taskNameFromTask,
 
-      -- response của chính employee này (nếu có)
       war.status AS responseStatus,
       war.respondedAt AS responseRespondedAt,
       war.rejectReason AS responseRejectReason
@@ -221,26 +264,6 @@ async function getMine(employeeId) {
   );
 
   return rows;
-  async function updateMyStatus({ id, employeeId, status }) {
-  // check assignment thuộc về employee đang login
-  const [rows] = await pool.query(
-    `SELECT id, employeeId FROM workassignments WHERE id = ? AND deleted_at IS NULL LIMIT 1`,
-    [id]
-  );
-
-  if (!rows.length) return null;
-
-  if (Number(rows[0].employeeId) !== Number(employeeId)) {
-    throw new ApiError(403, "You are not allowed to update this assignment");
-  }
-
-  await pool.query(
-    `UPDATE workassignments SET status = ?, updatedAt = NOW() WHERE id = ? AND deleted_at IS NULL`,
-    [status, id]
-  );
-
-  // trả lại row đầy đủ (reuse getById)
-  return getById(id);
 }
-}
+
 module.exports = { getAll, getById, create, update, remove, getMine };
