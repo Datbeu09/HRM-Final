@@ -19,4 +19,34 @@ function createTransporter() {
   });
 }
 
-module.exports = { createTransporter };
+/**
+ * ✅ FIX: define hàm sendPayrollExcel để service gọi được
+ * Giữ đúng param bạn đang truyền: { to, subject, text, filename, buffer }
+ */
+async function sendPayrollExcel({ to, subject, text, filename, buffer }) {
+  if (!to) throw new Error("sendPayrollExcel: 'to' is required");
+  if (!buffer) throw new Error("sendPayrollExcel: 'buffer' is required");
+
+  const transporter = createTransporter();
+
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+
+  await transporter.sendMail({
+    from,
+    to,
+    subject: subject || "Payroll Excel",
+    text: text || "",
+    attachments: [
+      {
+        filename: filename || "payroll.xlsx",
+        content: buffer,
+        contentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      },
+    ],
+  });
+
+  return true;
+}
+
+module.exports = { createTransporter, sendPayrollExcel };

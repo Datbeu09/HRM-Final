@@ -4,6 +4,7 @@ import { getEmployees } from "../../api/employees.api";
 import { createWorkAssignment } from "../../api/workAssignments.api";
 import { getDepartments } from "../../api/departments.api";
 import { getTasks } from "../../api/tasks.api";
+import { toYMD } from "../../utils/dateOnly"; // ✅ dùng util chống lệch ngày
 
 const PRIORITIES = ["Thấp", "Trung bình", "Cao"];
 
@@ -13,16 +14,6 @@ const normalizeText = (v) =>
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-
-const toYMD = (val) => {
-  if (!val) return "";
-  if (typeof val === "string") return val.includes("T") ? val.split("T")[0] : val;
-  try {
-    return new Date(val).toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-};
 
 const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
   const [allEmployees, setAllEmployees] = useState([]);
@@ -35,8 +26,8 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
 
   const [taskName, setTaskName] = useState("");
   const [notes, setNotes] = useState("");
-  const [assignedDate, setAssignedDate] = useState("");
-  const [deadline, setDeadline] = useState("");
+  const [assignedDate, setAssignedDate] = useState(""); // store YYYY-MM-DD
+  const [deadline, setDeadline] = useState("");         // store YYYY-MM-DD
   const [priority, setPriority] = useState("Trung bình"); // UI only
   const [status, setStatus] = useState("PENDING");
 
@@ -89,18 +80,16 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
     [departments, departmentId]
   );
 
-  // ✅ FIX logic: lọc nhân viên theo phòng ban robust (departmentId nếu có, fallback theo text)
+  // ✅ lọc nhân viên theo phòng ban robust (departmentId nếu có, fallback theo text)
   const employeesInDept = useMemo(() => {
     if (!selectedDepartment) return [];
     const depId = selectedDepartment.id;
     const depNameNorm = normalizeText(selectedDepartment.departmentName);
 
     return allEmployees.filter((emp) => {
-      // ưu tiên match theo employee.departmentId nếu tồn tại trong employee object
       if (emp?.departmentId != null) {
         return Number(emp.departmentId) === Number(depId);
       }
-      // fallback match theo text employees.department
       const empDeptNorm = normalizeText(emp?.department);
       return empDeptNorm && empDeptNorm === depNameNorm;
     });
@@ -132,33 +121,28 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
     e.preventDefault();
     if (submitting) return;
 
+    const safeAssignedDate = toYMD(assignedDate);
+    const safeDeadline = toYMD(deadline);
+
     const payload = {
       employeeId: Number(employeeId),
       departmentId: departmentId ? Number(departmentId) : null,
       taskId: taskId ? Number(taskId) : null,
 
-      // DB: taskName, notes
       taskName: String(taskName || "").trim(),
       notes: notes ? String(notes) : null,
 
-      // DB: assignedDate, deadline
-      assignedDate: assignedDate || null,
-      deadline: deadline || null,
+      // ✅ luôn gửi date-only chuẩn
+      assignedDate: safeAssignedDate || null,
+      deadline: safeDeadline || null,
 
-      // DB: status, assignedByAccountId
       status: status || "PENDING",
-
-      // ✅ IMPORTANT: accountId không cần lưu trong localStorage (bạn đã có token),
-      // backend controller của bạn đã lấy req.user?.id làm assignedByAccountId.
-      // Nhưng nếu backend vẫn cho gửi, gửi null cũng ok.
       assignedByAccountId: null,
     };
 
-    // validate UI
     if (!payload.departmentId) return alert("Vui lòng chọn phòng ban");
     if (!payload.employeeId) return alert("Vui lòng chọn nhân viên phụ trách");
 
-    // backend cho phép taskId OR taskName
     if (!payload.taskId && !payload.taskName) {
       return alert("Vui lòng chọn task hoặc nhập Tên nhiệm vụ");
     }
@@ -166,7 +150,6 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
     if (!payload.assignedDate) return alert("Vui lòng chọn Ngày bắt đầu");
     if (!payload.deadline) return alert("Vui lòng chọn Deadline");
 
-    // so sánh yyyy-mm-dd ok
     if (payload.deadline < payload.assignedDate) {
       return alert("Deadline không được nhỏ hơn Ngày bắt đầu");
     }
@@ -335,7 +318,7 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
                 </label>
                 <input
                   type="date"
-                  value={toYMD(assignedDate)}
+                  value={assignedDate} // ✅ giữ string YYYY-MM-DD, không convert ISO
                   onChange={(e) => setAssignedDate(e.target.value)}
                   className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   required
@@ -348,7 +331,7 @@ const AssignmentPopup = ({ isOpen, closeModal, onCreated }) => {
                 </label>
                 <input
                   type="date"
-                  value={toYMD(deadline)}
+                  value={deadline} // ✅ giữ string YYYY-MM-DD, không convert ISO
                   onChange={(e) => setDeadline(e.target.value)}
                   className="w-full px-4 py-2.5 text-sm rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                   required

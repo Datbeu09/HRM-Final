@@ -82,7 +82,7 @@ export default function Sidebar() {
         path: "/assignments_user",
         icon: "assignment_ind",
         label: "Tiếp nhận công việc",
-        permissionCode: "TASK_ASSIGN",
+        permissionCode: "TASK_ACCEPT",
       },
 
       // Approvals / Requests

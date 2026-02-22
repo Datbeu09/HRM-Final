@@ -1,8 +1,7 @@
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
 
-// ===== POSITION MAPPING (KHÔNG ĐỤNG DB) =====
-// ⚠️ Hãy sửa mapping cho đúng giá trị employees.position thực tế của bạn
+// ===== POSITION MAPPING =====
 const POSITION_MAP = {
   ADMIN: 1,
   DIRECTOR: 2,
@@ -20,11 +19,18 @@ function mapPositionToId(positionText) {
   return POSITION_MAP[key] ?? null;
 }
 
-async function getById(id) {
-  const [rows] = await pool.query(
-    `
+// ===== BASE SELECT (fix date timezone) =====
+function selectBase() {
+  return `
     SELECT
       wa.*,
+
+      DATE_FORMAT(wa.assignedDate, '%Y-%m-%d') AS assignedDate,
+      DATE_FORMAT(wa.deadline, '%Y-%m-%d')     AS deadline,
+
+      DATE_FORMAT(wa.assignedDate, '%d/%m/%Y') AS assignedDateText,
+      DATE_FORMAT(wa.deadline, '%d/%m/%Y')     AS deadlineText,
+
       e.name AS employeeName,
       e.employeeCode AS employeeCode,
       d.departmentName AS departmentName,
@@ -33,6 +39,13 @@ async function getById(id) {
     LEFT JOIN employees e ON e.id = wa.employeeId
     LEFT JOIN departments d ON d.id = wa.departmentId
     LEFT JOIN tasks t ON t.id = wa.taskId
+  `;
+}
+
+async function getById(id) {
+  const [rows] = await pool.query(
+    `
+    ${selectBase()}
     WHERE wa.id = ? AND wa.deleted_at IS NULL
     LIMIT 1
     `,
@@ -60,25 +73,11 @@ async function getAll(query = {}) {
     params.push(String(query.status));
   }
 
-  if (query.taskId) {
-    where.push("wa.taskId = ?");
-    params.push(Number(query.taskId));
-  }
-
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const whereSql = `WHERE ${where.join(" AND ")}`;
 
   const [rows] = await pool.query(
     `
-    SELECT
-      wa.*,
-      e.name AS employeeName,
-      e.employeeCode AS employeeCode,
-      d.departmentName AS departmentName,
-      t.taskName AS taskNameFromTask
-    FROM workassignments wa
-    LEFT JOIN employees e ON e.id = wa.employeeId
-    LEFT JOIN departments d ON d.id = wa.departmentId
-    LEFT JOIN tasks t ON t.id = wa.taskId
+    ${selectBase()}
     ${whereSql}
     ORDER BY wa.createdAt DESC
     `,
@@ -92,7 +91,7 @@ async function create(data) {
   const {
     employeeId,
     departmentId,
-    positionId, // có thể FE không gửi
+    positionId,
     taskId,
     taskName,
     assignedDate,
@@ -102,12 +101,11 @@ async function create(data) {
     assignedByAccountId,
   } = data;
 
-  // ===== validate cơ bản =====
   if (!employeeId) throw new ApiError(400, "employeeId is required");
   if (!assignedDate) throw new ApiError(400, "assignedDate is required");
-  if (!taskId && !taskName) throw new ApiError(400, "taskId or taskName is required");
+  if (!taskId && !taskName)
+    throw new ApiError(400, "taskId or taskName is required");
 
-  // ✅ TỰ TÍNH positionId (KHÔNG ĐỤNG DB SCHEMA/DATA)
   let finalPositionId = positionId ?? null;
 
   if (!finalPositionId) {
@@ -115,49 +113,37 @@ async function create(data) {
       "SELECT position FROM employees WHERE id = ? LIMIT 1",
       [employeeId]
     );
-    if (!eRows.length) throw new ApiError(400, "employeeId is invalid");
-
+    if (!eRows.length) throw new ApiError(400, "employeeId invalid");
     finalPositionId = mapPositionToId(eRows[0].position);
   }
 
-  if (!finalPositionId) {
-    throw new ApiError(
-      400,
-      "positionId is required (cannot map from employees.position). Update POSITION_MAP in workAssignments.service.js"
-    );
-  }
-
-  // nếu có taskId mà chưa có taskName -> lấy taskName từ tasks
   let finalTaskName = taskName;
   if (taskId && !finalTaskName) {
     const [tRows] = await pool.query(
       "SELECT taskName FROM tasks WHERE id = ? LIMIT 1",
       [taskId]
     );
-    if (!tRows.length) throw new ApiError(400, "taskId is invalid");
+    if (!tRows.length) throw new ApiError(400, "taskId invalid");
     finalTaskName = tRows[0].taskName;
   }
-
-  const finalStatus = status ?? "PENDING";
 
   const [rs] = await pool.query(
     `
     INSERT INTO workassignments
-      (employeeId, departmentId, positionId, taskId, taskName,
-       assignedDate, deadline, status, notes,
-       assignedByAccountId, createdAt, updatedAt)
-    VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+    (employeeId, departmentId, positionId, taskId, taskName,
+     assignedDate, deadline, status, notes,
+     assignedByAccountId, createdAt, updatedAt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
     `,
     [
       employeeId,
       departmentId ?? null,
-      finalPositionId, // ✅ không null
+      finalPositionId,
       taskId ?? null,
       finalTaskName,
       assignedDate,
       deadline ?? null,
-      finalStatus,
+      status ?? "PENDING",
       notes ?? null,
       assignedByAccountId ?? null,
     ]
@@ -170,25 +156,6 @@ async function update(id, data) {
   const current = await getById(id);
   if (!current) return null;
 
-  let nextTaskName = data.taskName ?? current.taskName;
-
-  const nextTaskId =
-    data.taskId !== undefined ? (data.taskId ?? null) : (current.taskId ?? null);
-
-  if (data.taskId !== undefined && nextTaskId && !data.taskName) {
-    const [tRows] = await pool.query(
-      "SELECT taskName FROM tasks WHERE id = ? LIMIT 1",
-      [nextTaskId]
-    );
-    if (!tRows.length) throw new ApiError(400, "taskId is invalid");
-    nextTaskName = tRows[0].taskName;
-  }
-
-  if (!nextTaskId && !nextTaskName) {
-    throw new ApiError(400, "taskId or taskName is required");
-  }
-
-  // ✅ nếu update không gửi positionId thì giữ nguyên như cũ
   await pool.query(
     `
     UPDATE workassignments
@@ -209,8 +176,8 @@ async function update(id, data) {
       data.employeeId ?? current.employeeId,
       data.departmentId ?? current.departmentId,
       data.positionId ?? current.positionId,
-      nextTaskId,
-      nextTaskName,
+      data.taskId ?? current.taskId,
+      data.taskName ?? current.taskName,
       data.assignedDate ?? current.assignedDate,
       data.deadline ?? current.deadline,
       data.status ?? current.status,
@@ -236,34 +203,68 @@ async function remove(id) {
 }
 
 async function getMine(employeeId) {
-  if (!employeeId) throw new ApiError(400, "employeeId is required");
+  if (!employeeId) throw new ApiError(400, "employeeId required");
 
   const [rows] = await pool.query(
     `
     SELECT
       wa.*,
+
+      DATE_FORMAT(wa.assignedDate, '%Y-%m-%d') AS assignedDate,
+      DATE_FORMAT(wa.deadline, '%Y-%m-%d')     AS deadline,
+      DATE_FORMAT(wa.assignedDate, '%d/%m/%Y') AS assignedDateText,
+      DATE_FORMAT(wa.deadline, '%d/%m/%Y')     AS deadlineText,
+
       e.name AS employeeName,
       e.employeeCode AS employeeCode,
       d.departmentName AS departmentName,
-      t.taskName AS taskNameFromTask,
+      t.taskName AS taskNameFromTask
 
-      war.status AS responseStatus,
-      war.respondedAt AS responseRespondedAt,
-      war.rejectReason AS responseRejectReason
     FROM workassignments wa
     LEFT JOIN employees e ON e.id = wa.employeeId
     LEFT JOIN departments d ON d.id = wa.departmentId
     LEFT JOIN tasks t ON t.id = wa.taskId
-    LEFT JOIN workassignmentresponses war
-      ON war.workAssignmentId = wa.id AND war.employeeId = ?
+
     WHERE wa.deleted_at IS NULL
       AND wa.employeeId = ?
+
     ORDER BY wa.createdAt DESC
     `,
-    [Number(employeeId), Number(employeeId)]
+    [Number(employeeId)]
   );
 
   return rows;
 }
 
-module.exports = { getAll, getById, create, update, remove, getMine };
+// ===== FIX CHO NÚT HOÀN THÀNH =====
+async function updateMyStatus({ id, employeeId, status }) {
+  if (!id) throw new ApiError(400, "id required");
+  if (!employeeId) throw new ApiError(400, "employeeId required");
+  if (!status) throw new ApiError(400, "status required");
+
+  const allowed = new Set(["IN_PROGRESS", "DONE"]);
+  if (!allowed.has(status))
+    throw new ApiError(400, "Invalid status");
+
+  const [rs] = await pool.query(
+    `
+    UPDATE workassignments
+    SET status = ?, updatedAt = NOW()
+    WHERE id = ? AND employeeId = ? AND deleted_at IS NULL
+    `,
+    [status, Number(id), Number(employeeId)]
+  );
+
+  if (rs.affectedRows === 0) return null;
+  return getById(id);
+}
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  remove,
+  getMine,
+  updateMyStatus,
+};

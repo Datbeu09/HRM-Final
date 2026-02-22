@@ -8,14 +8,16 @@ export default function PayrollToolbar({
   loading,
   submitting,
   disableApprove,
-  isApproved = false,
+  isLocked = false, // ✅ dùng để hiện “Mở khóa”
   isAdmin = false,
 }) {
-  const approveLabel = isApproved ? "Mở khóa bảng lương" : "Chốt bảng lương";
+  const approveLabel = isLocked ? "Mở khóa bảng lương" : "Chốt bảng lương";
 
-  // ✅ Nếu đã chốt mà không phải admin => disable
   const approveDisabled =
-    loading || submitting || disableApprove || (isApproved && !isAdmin);
+    loading ||
+    submitting ||
+    (!isLocked && disableApprove) || // ✅ chỉ chặn khi CHỐT
+    (isLocked && !isAdmin);          // ✅ đã chốt mà không phải admin => disable
 
   return (
     <section className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between px-4 py-3 bg-white border border-border rounded-xl shadow-sm">
@@ -50,13 +52,15 @@ export default function PayrollToolbar({
           disabled={approveDisabled}
           className="inline-flex items-center gap-2 px-4 h-11 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition disabled:opacity-60"
           title={
-            isApproved && !isAdmin
-              ? "Chỉ ADMIN mới có quyền mở khóa bảng lương"
+            isLocked && !isAdmin
+              ? "Bảng lương đã chốt. Chỉ ADMIN mới có quyền mở khóa."
+              : !isLocked && disableApprove
+              ? "Có sai lệch dữ liệu, không thể chốt."
               : ""
           }
         >
           <span className="material-symbols-outlined text-[18px]">
-            {isApproved ? "lock_open" : "check_circle"}
+            {isLocked ? "lock_open" : "check_circle"}
           </span>
           {approveLabel}
         </button>

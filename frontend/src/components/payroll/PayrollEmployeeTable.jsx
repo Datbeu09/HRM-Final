@@ -18,11 +18,10 @@ function EmptyState() {
 }
 
 function normalizeStatusLabel(status) {
-  if (!status) return "Chưa duyệt";
-  const s = String(status).trim().toLowerCase();
+  const s = String(status || "").trim().toLowerCase();
   if (s === "đã duyệt") return "Đã duyệt";
   if (s === "chưa duyệt") return "Chưa duyệt";
-  return status;
+  return "Chưa duyệt";
 }
 
 function statusBadge(status) {
@@ -38,9 +37,7 @@ function statusBadge(status) {
 
 function getDepartmentName(departments, departmentId) {
   if (!departmentId) return "N/A";
-  const dep = (departments || []).find(
-    (d) => String(d?.id) === String(departmentId)
-  );
+  const dep = (departments || []).find((d) => String(d?.id) === String(departmentId));
   return dep?.departmentName || "N/A";
 }
 
@@ -186,7 +183,9 @@ export default function PayrollEmployeeTable({
                     </td>
 
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex items-center px-3 py-1 text-xs font-bold rounded-full border ${badge.cls}`}>
+                      <span
+                        className={`inline-flex items-center px-3 py-1 text-xs font-bold rounded-full border ${badge.cls}`}
+                      >
                         {badge.text}
                       </span>
                     </td>

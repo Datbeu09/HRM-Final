@@ -3,8 +3,7 @@ import {
   getPayrollApproval,
   exportPayrollToExcel,
   approveAndEmailPayroll,
-  // handleUnapprove nếu bạn có API mở khóa thì import vào đây
-  // unapprovePayroll,
+  unapprovePayroll,
 } from "../../api/payrollApproval.api";
 import { getDepartments } from "../../api/departments.api";
 
@@ -16,18 +15,18 @@ import PayrollHeaderControls from "../../components/payroll/PayrollHeaderControl
 import { normalizeResponse } from "../../components/payroll/payrollUtils";
 import PayrollConfirmPopup from "../../components/Popup/PayrollConfirm";
 
-/* ================= Status helpers (2 trạng thái) ================= */
+/* ================= Helpers ================= */
 
 const normalizeStatus2 = (status) => {
   const s = String(status || "").trim().toLowerCase();
   if (s === "đã duyệt") return "Đã duyệt";
   if (s === "chưa duyệt") return "Chưa duyệt";
-  return status || "Chưa duyệt"; // default an toàn
+  return "Chưa duyệt";
 };
 
-const isRowApproved = (row) => {
-  // ✅ chỉ tin status
-  return normalizeStatus2(row?.status ?? row?.raw?.status) === "Đã duyệt";
+const to01 = (v) => {
+  const n = Number(v);
+  return n === 1 ? 1 : 0;
 };
 
 export default function FinanceApprovalPage() {
@@ -48,7 +47,6 @@ export default function FinanceApprovalPage() {
 
   const [openConfirm, setOpenConfirm] = useState(false);
 
-  // ✅ lấy email mặc định từ localStorage user (nếu có)
   const defaultEmail = useMemo(() => {
     try {
       const u = JSON.parse(localStorage.getItem("user") || "null");
@@ -58,7 +56,6 @@ export default function FinanceApprovalPage() {
     }
   }, []);
 
-  // ✅ ADMIN CHECK
   const isAdmin = useMemo(() => {
     try {
       const u = JSON.parse(localStorage.getItem("user") || "null");
@@ -69,7 +66,7 @@ export default function FinanceApprovalPage() {
   }, []);
 
   useEffect(() => {
-    const fetchDepartments = async () => {
+    (async () => {
       try {
         const data = await getDepartments();
         setDepartments(Array.isArray(data) ? data : []);
@@ -77,8 +74,7 @@ export default function FinanceApprovalPage() {
         console.error(e);
         setDepartments([]);
       }
-    };
-    fetchDepartments();
+    })();
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -92,11 +88,16 @@ export default function FinanceApprovalPage() {
 
       const normalized = normalizeResponse(data);
 
-      // ✅ IMPORTANT: đảm bảo KHÔNG override status theo locked
-      const safeEmployees = (normalized.employees || []).map((x) => ({
-        ...x,
-        status: normalizeStatus2(x?.status ?? x?.raw?.status),
-      }));
+      // ✅ giữ đúng locked/status backend trả về
+      const safeEmployees = (normalized.employees || []).map((x) => {
+        const lockedRaw = x?.locked ?? x?.raw?.locked ?? 0;
+
+        return {
+          ...x,
+          locked: to01(lockedRaw), // luôn 0/1
+          status: normalizeStatus2(x?.status ?? x?.raw?.status),
+        };
+      });
 
       setKpi(normalized.kpi);
       setRows(safeEmployees);
@@ -125,14 +126,27 @@ export default function FinanceApprovalPage() {
   }, [rows, q]);
 
   const totalNetSalary = useMemo(() => {
-    return (rows || []).reduce((sum, item) => sum + Number(item.netSalary || 0), 0);
+    return (rows || []).reduce(
+      (sum, item) => sum + Number(item.netSalary || 0),
+      0
+    );
   }, [rows]);
 
-  // ✅ xác định đã chốt hay chưa (CHỈ dựa status)
+  /**
+   * ✅ QUAN TRỌNG:
+   * Nút “Mở khóa” phải dựa vào locked (ổn định nhất), KHÔNG phụ thuộc id.
+   * Chỉ cần thấy có ít nhất 1 dòng locked=1 => coi như bảng lương đang chốt.
+   */
+  const isLocked = useMemo(() => {
+    return (rows || []).some((x) => Number(x.locked ?? x?.raw?.locked ?? 0) === 1);
+  }, [rows]);
+
+  // (giữ lại nếu bạn vẫn muốn dùng ở nơi khác)
   const isApproved = useMemo(() => {
+    // status chỉ để hiển thị/logic phụ, không quyết định nút
     const salaryRows = (rows || []).filter((x) => x.id != null);
     if (salaryRows.length === 0) return false;
-    return salaryRows.every((x) => isRowApproved(x));
+    return salaryRows.every((x) => normalizeStatus2(x.status) === "Đã duyệt");
   }, [rows]);
 
   const dataStatusLabel = useMemo(() => {
@@ -179,12 +193,12 @@ export default function FinanceApprovalPage() {
     }
   };
 
-  // ✅ chỉ mở popup nếu chưa chốt
-  const handleApproveButton = () => {
+  // ✅ 1 nút dùng cho cả chốt & mở khóa
+  const handleApproveButton = async () => {
     if (loading || submitting) return;
 
-    // ✅ Nếu đã chốt: chỉ ADMIN mới được mở khóa
-    if (isApproved) {
+    // ✅ ĐANG CHỐT => MỞ KHÓA (chỉ ADMIN)
+    if (isLocked) {
       if (!isAdmin) return;
 
       const ok = window.confirm(
@@ -192,15 +206,26 @@ export default function FinanceApprovalPage() {
       );
       if (!ok) return;
 
-      // ✅ Nếu bạn có API mở khóa thì gọi ở đây.
-      // await unapprovePayroll({ month, department: departmentId || undefined })
-      // await fetchData()
+      setSubmitting(true);
+      setError("");
+      try {
+        await unapprovePayroll({
+          month,
+          department: departmentId || undefined,
+        });
 
-      alert("Bạn cần API mở khóa (unapprove) để cập nhật DB status='Chưa duyệt' và locked=0.");
+        await fetchData();
+        alert("Đã mở khóa. Trạng thái chuyển về 'Chưa duyệt'.");
+      } catch (e) {
+        console.error(e);
+        setError(e?.response?.data?.message || e?.message || "Mở khóa thất bại");
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
-    // ✅ Chưa chốt -> mở popup ký -> chốt + gửi mail
+    // ✅ CHƯA CHỐT => mở popup ký -> chốt + gửi mail
     setOpenConfirm(true);
   };
 
@@ -221,7 +246,9 @@ export default function FinanceApprovalPage() {
       setOpenConfirm(false);
     } catch (e) {
       console.error(e);
-      setError(e?.response?.data?.message || e?.message || "Chốt + gửi email thất bại");
+      setError(
+        e?.response?.data?.message || e?.message || "Chốt + gửi email thất bại"
+      );
     } finally {
       setSubmitting(false);
     }
@@ -255,7 +282,7 @@ export default function FinanceApprovalPage() {
             loading={loading}
             submitting={submitting}
             disableApprove={checkState?.allOk === false}
-            isApproved={isApproved}
+            isLocked={isLocked}     // ✅ QUAN TRỌNG
             isAdmin={isAdmin}
           />
 

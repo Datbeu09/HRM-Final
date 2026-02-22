@@ -1,6 +1,8 @@
+// services/payrollApproval.service.js
 const pool = require("../config/db");
 const ApiError = require("../utils/ApiError");
 const ExcelJS = require("exceljs");
+const { sendPayrollExcel } = require("../utils/mailer");
 
 /* ================= Helpers ================= */
 
@@ -298,7 +300,7 @@ module.exports = {
     return { updated: result.affectedRows };
   },
 
-  // ✅ NEW: MỞ KHÓA: Chưa duyệt + locked=0
+  // ✅ MỞ KHÓA: Chưa duyệt + locked=0
   async unapprove({ monthStr, department }) {
     const { month, year } = parseMonthYear(monthStr);
 
@@ -354,9 +356,6 @@ module.exports = {
     return { id: ins.insertId, month, year };
   },
 
-  /**
-   * Export Excel “Phiếu xuất lương tổng” theo tháng
-   */
   async exportPayrollToExcel({ monthStr, department }) {
     const { rows, month, year, depId } = await fetchApprovalRows({ monthStr, department });
     const data = buildApprovalResponse({ rows, month, year, depId });
@@ -502,57 +501,17 @@ module.exports = {
       }
     }
 
-    const kpiStart = totalRowIdx + 2;
-
-    merge(kpiStart, 1, kpiStart, 3);
-    ws.getCell(kpiStart, 1).value = "TỔNG HỢP KPI";
-    ws.getCell(kpiStart, 1).font = { bold: true };
-
-    const kpiRows = [
-      ["Tổng Gross", data.kpi.gross],
-      ["Tổng BH", data.kpi.ins],
-      ["Tổng Thuế", data.kpi.tax],
-      ["Tổng Net", data.kpi.net],
-    ];
-
-    let rr = kpiStart + 1;
-    for (const [label, val] of kpiRows) {
-      merge(rr, 1, rr, 2);
-      ws.getCell(rr, 1).value = label;
-      ws.getCell(rr, 3).value = Number(val || 0);
-      ws.getCell(rr, 3).numFmt = moneyFmt;
-      ws.getCell(rr, 3).alignment = { horizontal: "right" };
-      rr++;
-    }
-
-    const signRow = rr + 2;
-
-    merge(signRow, 1, signRow, 3);
-    merge(signRow, 4, signRow, 6);
-    merge(signRow, 7, signRow, 9);
-
-    ws.getCell(signRow, 1).value = "NGƯỜI LẬP";
-    ws.getCell(signRow, 4).value = "KẾ TOÁN";
-    ws.getCell(signRow, 7).value = "GIÁM ĐỐC";
-
-    for (const c of [1, 4, 7]) {
-      ws.getCell(signRow, c).font = { bold: true };
-      ws.getCell(signRow, c).alignment = { horizontal: "center" };
-    }
-
-    merge(signRow + 1, 1, signRow + 5, 3);
-    merge(signRow + 1, 4, signRow + 5, 6);
-    merge(signRow + 1, 7, signRow + 5, 9);
-
     const buffer = await wb.xlsx.writeBuffer();
-    const filename = `phieu_xuat_luong_tong_${monthStr}${
-      data.departmentId ? `_dep${data.departmentId}` : ""
-    }.xlsx`;
+    const filename = `phieu_xuat_luong_tong_${monthStr}${data.departmentId ? `_dep${data.departmentId}` : ""}.xlsx`;
 
     return { buffer, filename };
   },
+
+  // ✅ approve + export + email
   async approveAndEmail({ monthStr, department, approvedByAccountId, toEmail }) {
-    const { month, year } = this.parseMonthYear(monthStr);
+    // ✅ FIX 1: KHÔNG dùng this.parseMonthYear
+    const { month, year } = parseMonthYear(monthStr);
+
     if (!approvedByAccountId) throw new ApiError(400, "approvedByAccountId is required");
     if (!toEmail) throw new ApiError(400, "toEmail is required");
 
@@ -560,8 +519,6 @@ module.exports = {
     try {
       await conn.beginTransaction();
 
-      // --- check đã chốt chưa (nếu đã chốt thì báo luôn) ---
-      // (đỡ bị bấm lại)
       const dep = (function buildDepartmentWhere(department) {
         const normalizeDepartmentId = (v) => {
           if (v === undefined || v === null || v === "") return null;
@@ -593,7 +550,6 @@ module.exports = {
         throw new ApiError(400, "Bảng lương đã chốt rồi, không thể chốt lại.");
       }
 
-      // --- 1) Approve + lock ---
       const [result] = await conn.query(
         `
         UPDATE monthlysalary ms
@@ -610,10 +566,9 @@ module.exports = {
         [approvedByAccountId, month, year, ...dep.params]
       );
 
-      // --- 2) Export Excel (tận dụng hàm có sẵn) ---
-      const { buffer, filename } = await this.exportPayrollToExcel({ monthStr, department });
+      // ✅ FIX 2: gọi chắc chắn đúng hàm export trong module
+      const { buffer, filename } = await module.exports.exportPayrollToExcel({ monthStr, department });
 
-      // --- 3) Send Email ---
       await sendPayrollExcel({
         to: toEmail,
         subject: `Bảng lương tháng ${monthStr}${dep.depId ? ` (Dep ${dep.depId})` : ""}`,

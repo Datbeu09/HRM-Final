@@ -43,7 +43,12 @@ export const unapprovePayroll = async ({ month, department } = {}) => {
   return unwrap(res);
 };
 
-export const requestPayrollEdit = async ({ month, department, employeeId, reason } = {}) => {
+export const requestPayrollEdit = async ({
+  month,
+  department,
+  employeeId,
+  reason,
+} = {}) => {
   const res = await axiosClient.post("/payroll-approval/request-edit", {
     month,
     department: department || undefined,

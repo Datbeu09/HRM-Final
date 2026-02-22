@@ -58,10 +58,19 @@ module.exports = {
     }
   },
 
+  // ✅ CHỈ ADMIN MỚI ĐƯỢC MỞ KHÓA
   async unapprove(req, res, next) {
     try {
       let { month, department } = req.body || {};
       if (!month) month = currentYYYYMM();
+
+      // ✅ nếu auth middleware chưa set req.user
+      if (!req.user) throw new ApiError(401, "Unauthorized");
+
+      const role = String(req.user?.role || "").toUpperCase();
+      if (role !== "ADMIN") {
+        throw new ApiError(403, "Chỉ ADMIN mới được mở khóa bảng lương");
+      }
 
       const data = await service.unapprove({
         monthStr: month,
@@ -116,7 +125,6 @@ module.exports = {
     }
   },
 
-  // ✅ NEW: POST /api/payroll-approval/approve-and-email
   async approveAndEmail(req, res, next) {
     try {
       let { month, department, toEmail } = req.body || {};

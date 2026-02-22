@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { formatDMY } from "../../../utils/dateOnly";
 
 const PAGE_SIZE = 5;
 
@@ -43,8 +44,14 @@ const AssignmentTable = ({ assignments = [] }) => {
                   <td className="border px-3 py-2">{a.employeeName}</td>
                   <td className="border px-3 py-2">{a.departmentName}</td>
                   <td className="border px-3 py-2">{a.taskName}</td>
-                  <td className="border px-3 py-2 text-center">{a.assignedDateText}</td>
-                  <td className="border px-3 py-2 text-center">{a.deadlineText}</td>
+
+                  {/* ✅ Không hiển thị raw text nữa: normalize/format */}
+                  <td className="border px-3 py-2 text-center">
+                    {formatDMY(a.assignedDateText || a.assignedDate)}
+                  </td>
+                  <td className="border px-3 py-2 text-center">
+                    {formatDMY(a.deadlineText || a.deadline)}
+                  </td>
                 </tr>
               ))
             )}

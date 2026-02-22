@@ -59,8 +59,13 @@ export default function App() {
                 </Route>
 
                 {/* tasks */}
+                {/* tasks - PHÂN CÔNG (admin/hr/giám đốc) */}
                 <Route element={<ProtectedRoute permissions="TASK_ASSIGN" />}>
                   <Route path="/assignments" element={<AssignmentAdmin />} />
+                </Route>
+
+                {/* tasks - TIẾP NHẬN (kế toán/nhân viên + admin/hr/giám đốc cũng có) */}
+                <Route element={<ProtectedRoute permissions="TASK_ACCEPT" />}>
                   <Route path="/assignments_user" element={<AssignmentsUser />} />
                 </Route>
 
@@ -119,7 +124,7 @@ export default function App() {
 
                 {/* finance overview */}
                 <Route element={<ProtectedRoute permissions="FINANCE_OVERVIEW" />}>
-                  <Route path="/finance" element={<FinanceDashboard />} />              
+                  <Route path="/finance" element={<FinanceDashboard />} />
                 </Route>
 
                 {/* salary */}
@@ -134,7 +139,7 @@ export default function App() {
                     path="/payroll-approval"
                     element={<PayrollApprovalPage />}
                   />
-                 <Route path="/accountant/payroll/:employeeId" element={<PayrollDetail />} />
+                  <Route path="/accountant/payroll/:employeeId" element={<PayrollDetail />} />
 
                 </Route>
 

@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { formatRangeDMY } from "../../../utils/dateOnly";
 
 const badge = (status) => {
   const s = String(status || "").toLowerCase();
@@ -9,18 +10,16 @@ const badge = (status) => {
   return { text: status || "N/A", cls: "bg-slate-50 text-slate-700" };
 };
 
-const fmt = (val) => {
-  if (!val) return "";
-  if (typeof val === "string" && val.includes("T")) return val.split("T")[0];
-  return String(val);
-};
-
 export default function TaskItem({ task, status, onReceive, onDone, onReject }) {
   const b = useMemo(() => badge(status), [status]);
 
   const canReceive = status === "pending";
   const canDone = status === "inprogress";
   const canReject = status === "pending";
+
+  const timeText = useMemo(() => {
+    return formatRangeDMY(task?.startDate, task?.endDate);
+  }, [task?.startDate, task?.endDate]);
 
   return (
     <div className="px-6 py-4 flex items-start justify-between gap-4">
@@ -34,11 +33,7 @@ export default function TaskItem({ task, status, onReceive, onDone, onReject }) 
 
         <div className="text-xs text-slate-500 mt-1 space-x-3">
           {task?.departmentName ? <span>Phòng ban: {task.departmentName}</span> : null}
-          {(task?.startDate || task?.endDate) ? (
-            <span>
-              Thời gian: {fmt(task?.startDate)} {task?.endDate ? `→ ${fmt(task.endDate)}` : ""}
-            </span>
-          ) : null}
+          {timeText ? <span>Thời gian: {timeText}</span> : null}
         </div>
 
         {task?.description ? (
