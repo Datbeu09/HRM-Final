@@ -19,8 +19,6 @@ const labelMonth = (ym) => {
   return `${m[2]}/${m[1]}`;
 };
 
-// ... giữ nguyên imports
-
 const statusBadge = (status) => {
   const s = String(status || "").trim().toLowerCase();
 
@@ -38,12 +36,12 @@ const statusBadge = (status) => {
     };
   }
 
-  // ✅ mặc định: Chưa duyệt
   return {
     text: "Chưa duyệt",
     cls: "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
   };
 };
+
 /**
  * normalize payload backend -> UI model (chịu nhiều shape)
  * ✅ FIX: totalIncome/gross + tax suy ra đúng, không bị agreedSalary nuốt mất phụ cấp
@@ -101,17 +99,13 @@ function normalizeDetail(payload, monthStr) {
   );
 
   const totalAllowancesField = toNum(payroll.totalAllowances ?? 0);
-  const allowanceTotalValue =
-    totalAllowancesField > 0 ? totalAllowancesField : sumAllowancesFromList;
+  const allowanceTotalValue = totalAllowancesField > 0 ? totalAllowancesField : sumAllowancesFromList;
 
   incomeItems.push({
     key: "allowanceBonus",
     label: "Phụ cấp & Thưởng",
     value: allowanceTotalValue,
-    sub:
-      totalAllowancesField > 0
-        ? "Theo monthlysalary.totalAllowances"
-        : "Suy ra từ danh sách allowances",
+    sub: totalAllowancesField > 0 ? "Theo monthlysalary.totalAllowances" : "Suy ra từ danh sách allowances",
   });
 
   // 3) Chi tiết allowances (nếu có)
@@ -120,11 +114,7 @@ function normalizeDetail(payload, monthStr) {
       key: `allow_${a.id || a.name || Math.random()}`,
       label: a.name || a.type || "Phụ cấp",
       value: toNum(a.amount ?? a.value ?? 0),
-      sub: a.applyByAttendance
-        ? "Áp dụng theo chấm công"
-        : a.calcType
-        ? `calcType: ${a.calcType}`
-        : "",
+      sub: a.applyByAttendance ? "Áp dụng theo chấm công" : a.calcType ? `calcType: ${a.calcType}` : "",
     });
   }
 
@@ -135,8 +125,6 @@ function normalizeDetail(payload, monthStr) {
   const grossFromBackend = toNum(payroll.grossSalary ?? 0);
   const agreed = toNum(payroll.agreedSalary ?? 0);
 
-  // totalIncome cuối: ưu tiên grossSalary nếu có; fallback base+allowances.
-  // Dùng Math.max để tránh trường hợp agreed/base nhỏ hơn grossByParts gây hụt như ảnh của bạn.
   const totalIncome = Math.max(grossFromBackend || grossByParts, grossByParts, agreed);
 
   // ===== Khấu trừ =====
@@ -328,9 +316,7 @@ export default function PayrollDetail() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-1 uppercase font-semibold">
             Kỳ lương tháng {labelMonth(month)}
           </p>
-          <span className={`px-3 py-1 text-xs font-bold rounded-full border ${badge.cls}`}>
-            {badge.text}
-          </span>
+          <span className={`px-3 py-1 text-xs font-bold rounded-full border ${badge.cls}`}>{badge.text}</span>
         </div>
       </div>
 
@@ -351,9 +337,7 @@ export default function PayrollDetail() {
         <div className="grid grid-cols-1 md:grid-cols-2 divide-x divide-gray-100 dark:divide-gray-800">
           {/* Thu nhập */}
           <div className="p-8">
-            <h3 className="text-lg font-bold uppercase tracking-wide text-primary mb-6">
-              Các khoản thu nhập
-            </h3>
+            <h3 className="text-lg font-bold uppercase tracking-wide text-primary mb-6">Các khoản thu nhập</h3>
 
             {incomeItems.length === 0 ? (
               <div className="text-sm text-gray-500">Không có dữ liệu thu nhập.</div>
@@ -366,20 +350,13 @@ export default function PayrollDetail() {
 
           {/* Khấu trừ */}
           <div className="p-8 bg-gray-50/50 dark:bg-gray-800/20">
-            <h3 className="text-lg font-bold uppercase tracking-wide text-red-500 mb-6">
-              Các khoản khấu trừ
-            </h3>
+            <h3 className="text-lg font-bold uppercase tracking-wide text-red-500 mb-6">Các khoản khấu trừ</h3>
 
             {deductItems.length === 0 ? (
               <div className="text-sm text-gray-500">Không có dữ liệu khấu trừ.</div>
             ) : (
               deductItems.map((it) => (
-                <DeductItem
-                  key={it.key}
-                  label={it.label}
-                  value={`- ${formatVND(it.value)}`}
-                  sub={it.sub}
-                />
+                <DeductItem key={it.key} label={it.label} value={`- ${formatVND(it.value)}`} sub={it.sub} />
               ))
             )}
           </div>
@@ -405,8 +382,8 @@ export default function PayrollDetail() {
           ✔ Bảng lương đã được hệ thống kiểm tra và khớp dữ liệu chấm công (nếu có)
         </div>
 
+        {/* ✅ CHỈ CÒN NÚT GỬI EMAIL */}
         <div className="flex gap-4">
-          {/* ✅ đổi nút thành Gửi email */}
           <button
             onClick={handleSendEmail}
             disabled={sending || String(pr.status || "").toLowerCase() === "missing"}
@@ -414,14 +391,6 @@ export default function PayrollDetail() {
             title={String(pr.status || "").toLowerCase() === "missing" ? "Chưa có bảng lương để gửi email" : ""}
           >
             {sending ? "Đang gửi..." : "Gửi email phiếu lương"}
-          </button>
-
-          <button
-            disabled={String(pr.status || "").toLowerCase() === "missing"}
-            className="px-8 py-2 bg-primary text-white font-bold rounded-lg text-sm shadow-lg hover:bg-opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-            title={String(pr.status || "").toLowerCase() === "missing" ? "Chưa có bảng lương để ký duyệt" : ""}
-          >
-            Ký duyệt & chi trả
           </button>
         </div>
       </div>
@@ -464,11 +433,7 @@ function Summary({ label, value, danger, highlight }) {
       <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">{label}</span>
       <span
         className={`font-bold ${
-          highlight
-            ? "text-4xl text-primary"
-            : danger
-            ? "text-2xl text-red-500"
-            : "text-2xl text-gray-800 dark:text-gray-200"
+          highlight ? "text-4xl text-primary" : danger ? "text-2xl text-red-500" : "text-2xl text-gray-800 dark:text-gray-200"
         }`}
       >
         {value}
