@@ -29,9 +29,21 @@ function pushHistory(history, event) {
   return arr;
 }
 
+function hasPerm(user, perm) {
+  const perms = user?.permissions || [];
+  return perms.includes(perm);
+}
+
+function isApprover(user) {
+  return hasPerm(user, "REQUEST_APPROVE");
+}
+
 module.exports = {
-  // ================= LIST =================
+  // ================= LIST (Admin/Approver) =================
   async list(query, user) {
+    // Nếu không phải approver => chặn luôn (route cũng đã chặn, nhưng check thêm cho chắc)
+    if (!isApprover(user)) throw new ApiError(403, "Forbidden");
+
     let where = "WHERE 1=1";
     const params = [];
 
@@ -48,10 +60,39 @@ module.exports = {
       params.push(query.type);
     }
 
-    // EMPLOYEE chỉ xem của mình
-    if (user.role === "EMPLOYEE") {
-      where += " AND employeeId = ?";
-      params.push(user.employeeId);
+    const [rows] = await pool.query(
+      `
+      SELECT *
+      FROM approvals
+      ${where}
+      ORDER BY id DESC
+      `,
+      params
+    );
+
+    return rows.map((r) => ({ ...r, history: safeJson(r.history) }));
+  },
+
+  // ================= GET BY EMPLOYEE ID (Employee self / Approver any) =================
+  async getByEmployeeId(employeeId, query, user) {
+    const eid = Number(employeeId);
+    if (!eid) throw new ApiError(400, "employeeId is invalid");
+
+    // Non-approver chỉ được xem của chính mình
+    if (!isApprover(user) && Number(user?.employeeId) !== eid) {
+      throw new ApiError(403, "Forbidden");
+    }
+
+    let where = "WHERE employeeId = ?";
+    const params = [eid];
+
+    if (query?.status) {
+      where += " AND status = ?";
+      params.push(query.status);
+    }
+    if (query?.type) {
+      where += " AND type = ?";
+      params.push(query.type);
     }
 
     const [rows] = await pool.query(
@@ -64,10 +105,7 @@ module.exports = {
       params
     );
 
-    return rows.map((r) => ({
-      ...r,
-      history: safeJson(r.history),
-    }));
+    return rows.map((r) => ({ ...r, history: safeJson(r.history) }));
   },
 
   // ================= GET BY ID =================
@@ -76,7 +114,8 @@ module.exports = {
     const row = rows[0];
     if (!row) return null;
 
-    if (user.role === "EMPLOYEE" && Number(row.employeeId) !== Number(user.employeeId)) {
+    // Non-approver chỉ xem được đơn của chính mình
+    if (!isApprover(user) && Number(row.employeeId) !== Number(user?.employeeId)) {
       throw new ApiError(403, "Forbidden");
     }
 
@@ -85,8 +124,13 @@ module.exports = {
 
   // ================= CREATE =================
   async create(body, user) {
-    const employeeId = user.role === "EMPLOYEE" ? user.employeeId : body.employeeId;
-    if (!employeeId) throw new ApiError(400, "employeeId is required");
+    // ✅ Nếu không phải approver (KT + EMPLOYEE) => chỉ được tạo cho chính mình
+    // ✅ Nếu approver (HR/DIR/ADMIN) => tạo hộ nếu body.employeeId có, không có thì mặc định tạo cho chính mình
+    const eid = isApprover(user)
+      ? (body.employeeId ?? user.employeeId)
+      : user.employeeId;
+
+    if (!eid) throw new ApiError(400, "employeeId is required");
 
     const createdAt = now();
     const history = [
@@ -106,7 +150,7 @@ module.exports = {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
-          employeeId,
+          eid,
           body.type,
           body.reason,
           body.startDate,
@@ -131,12 +175,12 @@ module.exports = {
     const current = await this.getById(id, user);
     if (!current) throw new ApiError(404, "Approval not found");
 
+    // Non-approver chỉ được sửa đơn của chính mình (getById đã chặn)
     if (current.status !== STATUS.PENDING) {
       throw new ApiError(400, "Chỉ đơn 'Chờ duyệt' mới được sửa");
     }
 
     const updatedAt = now();
-
     const history = pushHistory(current.history, {
       at: updatedAt.toISOString(),
       by: user.id,
@@ -182,8 +226,10 @@ module.exports = {
     return true;
   },
 
-  // ================= ADMIN: APPROVE =================
+  // ================= APPROVE (Approver only) =================
   async approve(id, body, user) {
+    if (!isApprover(user)) throw new ApiError(403, "Forbidden");
+
     const current = await this.getById(id, user);
     if (!current) throw new ApiError(404, "Approval not found");
 
@@ -211,8 +257,10 @@ module.exports = {
     return this.getById(id, user);
   },
 
-  // ================= ADMIN: REJECT =================
+  // ================= REJECT (Approver only) =================
   async reject(id, body, user) {
+    if (!isApprover(user)) throw new ApiError(403, "Forbidden");
+
     const current = await this.getById(id, user);
     if (!current) throw new ApiError(404, "Approval not found");
 

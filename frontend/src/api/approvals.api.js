@@ -67,8 +67,18 @@ export const deleteApproval = async (id) => {
 
 // Lấy approvals theo nhân viên
 export const getApprovalsByEmployeeId = async (employeeId) => {
-  const res = await axiosClient.get(`/approvals/employee/${employeeId}`);
-  return Array.isArray(res.data?.data) ? res.data.data : [];
+  try {
+    const res = await axiosClient.get(`/approvals/employee/${employeeId}`);
+    return Array.isArray(res.data?.data) ? res.data.data : [];
+  } catch (err) {
+    // ✅ nếu BE trả 404 (route chưa có / hoặc trả 404 khi không có data)
+    if (err?.response?.status === 404) {
+      // fallback: lấy tất cả approvals rồi filter theo employeeId
+      const all = await getApprovals(); // đã chuẩn hoá trả []
+      return all.filter((a) => String(a.employeeId) === String(employeeId));
+    }
+    throw err;
+  }
 };
 
 // Tạo yêu cầu mới

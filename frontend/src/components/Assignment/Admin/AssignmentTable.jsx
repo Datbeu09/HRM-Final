@@ -3,6 +3,49 @@ import { formatDMY } from "../../../utils/dateOnly";
 
 const PAGE_SIZE = 5;
 
+// ✅ Badge trạng thái (map theo DB)
+const statusBadge = (status) => {
+  const s = String(status || "").toUpperCase();
+
+  if (s === "PENDING") {
+    return (
+      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-blue-50 text-blue-700 font-semibold">
+        Chờ tiếp nhận
+      </span>
+    );
+  }
+
+  if (s === "IN_PROGRESS") {
+    return (
+      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-amber-50 text-amber-700 font-semibold">
+        Đang thực hiện
+      </span>
+    );
+  }
+
+  if (s === "DONE") {
+    return (
+      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-emerald-50 text-emerald-700 font-semibold">
+        Hoàn thành
+      </span>
+    );
+  }
+
+  if (s === "REJECTED") {
+    return (
+      <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-red-50 text-red-700 font-semibold">
+        Từ chối
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center px-2 py-1 text-xs rounded-full bg-slate-50 text-slate-700 font-semibold">
+      N/A
+    </span>
+  );
+};
+
 const AssignmentTable = ({ assignments = [] }) => {
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -27,13 +70,14 @@ const AssignmentTable = ({ assignments = [] }) => {
               <th className="border px-3 py-2 text-left">Công việc</th>
               <th className="border px-3 py-2 text-center">Ngày giao</th>
               <th className="border px-3 py-2 text-center">Deadline</th>
+              <th className="border px-3 py-2 text-center">Trạng thái</th>
             </tr>
           </thead>
 
           <tbody>
             {pagedData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="text-center py-6 text-gray-500">
+                <td colSpan={7} className="text-center py-6 text-gray-500">
                   Không có công việc phù hợp
                 </td>
               </tr>
@@ -51,6 +95,11 @@ const AssignmentTable = ({ assignments = [] }) => {
                   </td>
                   <td className="border px-3 py-2 text-center">
                     {formatDMY(a.deadlineText || a.deadline)}
+                  </td>
+
+                  {/* ✅ Trạng thái */}
+                  <td className="border px-3 py-2 text-center">
+                    {statusBadge(a.status)}
                   </td>
                 </tr>
               ))
